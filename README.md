@@ -96,6 +96,13 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
 - Bouton 🗑️ (en haut à droite) pour effacer la sauvegarde et recommencer
   une nouvelle partie.
 
+**Module 7 — écran d'accueil & effets sonores**
+- Écran d'accueil au lancement : "Continuer l'aventure" (si une
+  sauvegarde existe) ou "Nouvelle partie", avec un rappel des contrôles.
+- Petits retours sonores synthétisés (jamais de fichier audio, donc
+  aucun droit d'auteur) pour planter, récolter, encaisser et signaler
+  une erreur.
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 

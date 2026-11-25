@@ -195,6 +195,18 @@ traduite en géométries/matériaux Three.js originaux.
     ignorés). Les différends de voisinage en cours ne sont volontairement
     pas restaurés (simplification assumée).
   - Bouton 🗑️ (en haut à droite) pour effacer la sauvegarde et recommencer.
+
+----------------------------------------------------------------------------
+ MODULE 7 — ÉCRAN D'ACCUEIL & EFFETS SONORES
+----------------------------------------------------------------------------
+  - Un écran d'accueil s'affiche après le chargement : "Continuer
+    l'aventure" (si une sauvegarde existe) ou "Nouvelle partie", avec un
+    rappel bref des contrôles. La sauvegarde n'est appliquée qu'après ce
+    choix explicite du joueur (`demarrerPartie` dans `main()`).
+  - `EffetsSonores` ajoute de petits retours sonores synthétisés (jamais de
+    fichier audio, donc jamais de droits d'auteur) pour planter, récolter,
+    encaisser, et signaler une erreur (pas assez d'argent, etc.), sur son
+    propre `AudioContext` créé au premier geste du joueur.
 ============================================================================
 -->
 
@@ -448,6 +460,56 @@ traduite en géométries/matériaux Three.js originaux.
     text-align: left;
   }
   .choix-conflit:hover { background: var(--couleur-accent); color: #1c2a1c; }
+
+  /* --- Écran d'accueil (module 7) --------------------------------------- */
+  #ecran-titre {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 35%, rgba(22,50,31,0.72) 0%, rgba(7,20,12,0.88) 100%);
+    backdrop-filter: blur(2px);
+  }
+  #ecran-titre.visible { display: flex; }
+  #ecran-titre-contenu {
+    max-width: 520px;
+    padding: 28px 32px;
+    text-align: center;
+    background: var(--couleur-fond-ui);
+    border: 1px solid var(--couleur-accent);
+    border-radius: 16px;
+  }
+  #ecran-titre-contenu h1 {
+    font-size: 1.8rem;
+    letter-spacing: 0.04em;
+    color: var(--couleur-accent);
+    margin: 0 0 10px;
+  }
+  #ecran-titre-accroche { margin: 0 0 16px; opacity: 0.9; font-size: 0.9rem; }
+  #ecran-titre-controles {
+    margin: 0 0 22px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    font-size: 0.74rem;
+    line-height: 1.7;
+    opacity: 0.85;
+  }
+  #ecran-titre-boutons { display: flex; flex-direction: column; gap: 8px; }
+  .bouton-titre {
+    padding: 11px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--couleur-accent);
+    background: rgba(255,255,255,0.06);
+    color: var(--couleur-texte);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .bouton-titre:hover { background: rgba(255,255,255,0.14); }
+  .bouton-titre-principal { background: var(--couleur-accent); color: #1c2a1c; font-weight: bold; }
+  .bouton-titre-principal:hover { background: #f0c868; }
 </style>
 </head>
 <body>
@@ -456,6 +518,24 @@ traduite en géométries/matériaux Three.js originaux.
   <h1>TERRE DU PACIFIQUE</h1>
   <p>Chargement de la scène 3D…</p>
   <div class="barre-progression"><div id="barre-interne"></div></div>
+</div>
+
+<!-- Écran d'accueil : affiché une fois le chargement terminé, propose de
+     reprendre la sauvegarde existante ou de commencer une nouvelle partie,
+     et rappelle brièvement les contrôles. Voir `main()`. -->
+<div id="ecran-titre">
+  <div id="ecran-titre-contenu">
+    <h1>TERRE DU PACIFIQUE</h1>
+    <p id="ecran-titre-accroche">Un farming sim 3D dans une Nouvelle-Calédonie fictive — open source.</p>
+    <div id="ecran-titre-controles">
+      <strong>Déplacement</strong> W/A/S/D ou flèches · <strong>Caméra</strong> clic-glisser, molette ·
+      <strong>Interagir</strong> E · <strong>Vue aérienne</strong> V · <strong>Tenue</strong> I
+    </div>
+    <div id="ecran-titre-boutons">
+      <button id="bouton-continuer" class="bouton-titre bouton-titre-principal">Continuer l'aventure</button>
+      <button id="bouton-nouvelle-partie" class="bouton-titre">Nouvelle partie</button>
+    </div>
+  </div>
 </div>
 
 <div id="hud">
@@ -2060,6 +2140,49 @@ class AmbianceSonore {
 
 
 /* ==========================================================================
+   5bis. EFFETS SONORES — EffetsSonores (module 7)
+   ==========================================================================
+   Petits retours sonores synthétisés (toujours via Web Audio API, donc
+   toujours sans fichier ni droits d'auteur) pour les actions courantes :
+   planter, récolter, encaisser, erreur. Son propre AudioContext, créé au
+   premier son joué (toujours déclenché par un geste du joueur — touche E
+   ou clic — donc conforme aux politiques des navigateurs).
+   ========================================================================== */
+
+class EffetsSonores {
+  constructor() { this.contexte = null; }
+
+  _obtenirContexte() {
+    if (!this.contexte) this.contexte = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.contexte.state === "suspended") this.contexte.resume();
+    return this.contexte;
+  }
+
+  _note(frequence, duree, type = "sine", volume = 0.1, delai = 0) {
+    const ctx = this._obtenirContexte();
+    const t = ctx.currentTime + delai;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = frequence;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(volume, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duree);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + duree + 0.05);
+  }
+
+  jouerPlanter() { this._note(520, 0.1, "triangle", 0.09); this._note(780, 0.12, "triangle", 0.07, 0.05); }
+  jouerRecolte() { this._note(660, 0.09, "square", 0.08); this._note(990, 0.14, "square", 0.07, 0.07); }
+  jouerPiece() { this._note(1046, 0.08, "square", 0.09); this._note(1568, 0.12, "square", 0.07, 0.06); }
+  jouerSucces() { this._note(523, 0.12, "triangle", 0.09); this._note(659, 0.12, "triangle", 0.09, 0.1); this._note(784, 0.2, "triangle", 0.09, 0.2); }
+  jouerErreur() { this._note(180, 0.18, "sawtooth", 0.07); }
+}
+
+
+/* ==========================================================================
    6. CULTURES & ÉCONOMIE — GestionCultures (module 3)
    ==========================================================================
    Gère le cycle plantation → croissance → récolte sur les parcelles de
@@ -2579,6 +2702,7 @@ function main() {
   const cultures = new GestionCultures(terrain.parcelles, joueur);
   const population = new GestionPopulation(terrain, joueur);
   const conflits = new GestionConflits(terrain);
+  const effets = new EffetsSonores();
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -2671,6 +2795,7 @@ function main() {
             action: () => {
               const recolte = cultures.recolter(p);
               afficherMessage(`Récolté : ${recolte.icone} ${recolte.nom}`);
+              effets.jouerRecolte();
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
             },
@@ -2679,7 +2804,7 @@ function main() {
           const pourcent = Math.round(p._progressionCourante * 100);
           cibleCourante = {
             libelle: `E : mettre de l'engrais (croissance ${pourcent}%, engrais : ${joueur.engrais})`,
-            action: () => { cultures.appliquerEngrais(p); mettreAJourHudEconomie(); sauvegarde.sauvegarder(); },
+            action: () => { cultures.appliquerEngrais(p); effets.jouerPiece(); mettreAJourHudEconomie(); sauvegarde.sauvegarder(); },
           };
         }
         if (cibleCourante) break;
@@ -2697,6 +2822,7 @@ function main() {
               const { total, nbVendu } = cultures.vendreRecolte(c);
               if (nbVendu > 0) population.ajouterRevenuCommunautaire(total);
               afficherMessage(nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment");
+              (nbVendu > 0 ? effets.jouerPiece() : effets.jouerErreur());
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
             },
@@ -2707,6 +2833,7 @@ function main() {
             action: () => {
               const reussi = cultures.acheterEngrais(c);
               afficherMessage(reussi ? "Engrais acheté" : "Pas assez d'argent");
+              (reussi ? effets.jouerPiece() : effets.jouerErreur());
               mettreAJourHudEconomie();
               if (reussi) sauvegarde.sauvegarder();
             },
@@ -2727,10 +2854,11 @@ function main() {
           cibleCourante = {
             libelle: `E : construire l'école (${coutEcole} pièces)`,
             action: () => {
-              if (joueur.argent < coutEcole) { afficherMessage("Pas assez d'argent pour l'école"); return; }
+              if (joueur.argent < coutEcole) { afficherMessage("Pas assez d'argent pour l'école"); effets.jouerErreur(); return; }
               joueur.argent -= coutEcole;
               population.construireEcole();
               afficherMessage("École construite ! La communauté grandit.");
+              effets.jouerSucces();
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
             },
@@ -2815,6 +2943,7 @@ function main() {
         cultures.planter(parcelleCiblee, culture.id, sceneManager.tempsJeuTotal);
         panneauPlantation.classList.remove("visible");
         afficherMessage(`Planté : ${culture.icone} ${culture.nom}`);
+        effets.jouerPlanter();
         sauvegarde.sauvegarder();
       });
       grillePlantation.appendChild(bouton);
@@ -2884,6 +3013,7 @@ function main() {
     const parcelleEntree = terrain.parcelles.find((p) => p.meshTerre === intersections[0].object);
     if (parcelleEntree && !parcelleEntree.data.cultureActuelle) {
       cultures.planter(parcelleEntree, graineSelectionnee, sceneManager.tempsJeuTotal);
+      effets.jouerPlanter();
     }
   }
 
@@ -2924,6 +3054,7 @@ function main() {
         const texte = conflits.resoudre(evenement, option.id, sceneManager.scene);
         panneauConflit.classList.remove("visible");
         afficherMessage(texte);
+        effets.jouerSucces();
       });
       grilleConflit.appendChild(bouton);
     });
@@ -3070,11 +3201,11 @@ function main() {
   });
 
   // --- Sauvegarde (module 6) ----------------------------------------------
-  // Chargée AVANT le premier rendu pour que le joueur retrouve exactement
-  // où il en était (argent, cultures en cours, population, école, tenue…).
+  // La sauvegarde est LUE tout de suite, mais seulement APPLIQUÉE une fois
+  // que le joueur a choisi "Continuer" ou "Nouvelle partie" sur l'écran
+  // d'accueil (module 7) — on évite ainsi d'écraser un choix explicite.
   const sauvegarde = new GestionSauvegarde({ sceneManager, joueur, personnage, terrain, population });
-  sauvegarde.appliquer(sauvegarde.charger());
-  mettreAJourHudEconomie();
+  const sauvegardeExistante = sauvegarde.charger();
 
   // Sauvegarde automatique périodique + à la fermeture de l'onglet.
   setInterval(() => sauvegarde.sauvegarder(), 20000);
@@ -3088,14 +3219,42 @@ function main() {
     }
   });
 
-  // --- Vérification post-chargement : masque l'écran de chargement --------
+  // --- Écran d'accueil (module 7) ------------------------------------------
+  const ecranTitre = document.getElementById("ecran-titre");
+  const boutonContinuer = document.getElementById("bouton-continuer");
+  const boutonNouvellePartie = document.getElementById("bouton-nouvelle-partie");
+
+  if (!sauvegardeExistante) {
+    boutonContinuer.style.display = "none";
+    boutonNouvellePartie.classList.add("bouton-titre-principal");
+    boutonNouvellePartie.textContent = "Commencer à jouer";
+  }
+
+  function demarrerPartie(reprendre) {
+    if (reprendre) sauvegarde.appliquer(sauvegardeExistante);
+    else sauvegarde.effacer();
+    mettreAJourHudEconomie();
+    ecranTitre.classList.remove("visible");
+  }
+  boutonContinuer.addEventListener("click", () => demarrerPartie(true));
+  boutonNouvellePartie.addEventListener("click", () => {
+    if (!sauvegardeExistante || confirm("Commencer une nouvelle partie et effacer la précédente ?")) {
+      demarrerPartie(false);
+    }
+  });
+
+  // --- Vérification post-chargement : masque l'écran de chargement, puis
+  //     affiche l'écran d'accueil ---------------------------------------
   const ecranChargement = document.getElementById("ui-chargement");
   const barreInterne = document.getElementById("barre-interne");
   requestAnimationFrame(() => {
     barreInterne.style.width = "100%";
     setTimeout(() => {
       ecranChargement.style.opacity = "0";
-      setTimeout(() => (ecranChargement.style.display = "none"), 650);
+      setTimeout(() => {
+        ecranChargement.style.display = "none";
+        ecranTitre.classList.add("visible");
+      }, 650);
     }, 300);
   });
 
