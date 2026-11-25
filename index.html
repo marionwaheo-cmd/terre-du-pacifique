@@ -137,6 +137,12 @@ traduite en géométries/matériaux Three.js originaux.
     compatible au prix du catalogue (E), sans négociation ni stock limité
     — un futur module pourra enrichir l'offre/demande, les prix variables,
     etc. sans changer la structure de données.
+  - MODULE 3bis — SEMIS PAR PEINTURE : barre de graines en bas à gauche de
+    l'écran (inspirée des jeux de gestion mobiles type Township). On
+    sélectionne une graine puis on clique/glisse directement sur les
+    parcelles affichées à l'écran (raycasting Three.js) pour semer en
+    série, sans repasser par le panneau de choix à chaque parcelle. Le
+    panneau (E à proximité) reste disponible pour planter au cas par cas.
 ============================================================================
 -->
 
@@ -328,6 +334,35 @@ traduite en géométries/matériaux Three.js originaux.
     line-height: 1.4;
   }
   .choix-culture:hover { background: var(--couleur-accent); color: #1c2a1c; }
+
+  /* --- Barre de semis "peinture" (module 3bis) ------------------------- */
+  #barre-semis {
+    position: fixed;
+    bottom: 14px;
+    left: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--couleur-fond-ui);
+    border-radius: 999px;
+    backdrop-filter: blur(4px);
+    z-index: 15;
+    font-size: 0.78rem;
+  }
+  #barre-semis-etiquette { opacity: 0.85; white-space: nowrap; }
+  #barre-semis-graines { display: flex; gap: 4px; }
+  .graine-bouton {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: rgba(255,255,255,0.08);
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .graine-bouton.actif { border-color: var(--couleur-accent); background: rgba(232,184,75,0.25); }
+  .graine-bouton.annuler { font-size: 0.95rem; }
 </style>
 </head>
 <body>
@@ -342,6 +377,7 @@ traduite en géométries/matériaux Three.js originaux.
   <strong>Déplacement :</strong> W/A/S/D ou flèches<br>
   <strong>Caméra :</strong> clic-gauche + glisser pour orbiter, molette pour zoomer<br>
   <strong>Vue aérienne :</strong> touche V · <strong>Tenue :</strong> touche I<br>
+  <strong>Semer :</strong> choisir une graine en bas à gauche, puis clic/glisser sur les parcelles<br>
   <strong>Zone actuelle :</strong> <span id="hud-zone-nom">—</span> ·
   <strong>Heure :</strong> <span id="hud-heure">—</span><br>
   <span id="hud-argent">💰 0 · 🧪 0</span> · <span id="hud-inventaire">Inventaire vide</span>
@@ -367,6 +403,15 @@ traduite en géométries/matériaux Three.js originaux.
 <div id="panneau-plantation">
   <h3>Choisir une culture</h3>
   <div id="grille-plantation"></div>
+</div>
+
+<!-- Barre de semis façon "Township" : on sélectionne une graine, puis on
+     clique/glisse sur les parcelles de plantation pour semer en série sans
+     repasser par un menu à chaque fois. Voir `main()`, section PLANTATION
+     PAR PEINTURE (module 3bis). -->
+<div id="barre-semis">
+  <span id="barre-semis-etiquette">🌱 Semis :</span>
+  <div id="barre-semis-graines"></div>
 </div>
 
 <script type="importmap">
@@ -1315,6 +1360,7 @@ class TerrainBuilder {
       data: parcelle, // référence vivante : les mutations sont partagées
       position: new THREE.Vector3(parcelle.position.x, h, parcelle.position.z),
       groupePousse,
+      meshTerre: terre, // utilisé par le raycaster du semis "peinture" (module 3bis)
       zoneId: zone.id,
     });
 
@@ -2186,6 +2232,83 @@ function main() {
     });
     panneauPlantation.classList.add("visible");
   }
+
+  /* ========================================================================
+     PLANTATION PAR PEINTURE (module 3bis) — barre de semis
+     ========================================================================
+     Inspiré des jeux de gestion mobiles (type Township) : on sélectionne
+     une graine dans la barre du bas, puis on clique (ou on clique-glisse)
+     directement sur les parcelles à l'écran pour semer en série, sans
+     repasser par un menu à chaque parcelle. On peut changer de graine à
+     tout moment en cliquant une autre icône, ou annuler (✖) pour revenir
+     au contrôle normal de la caméra.
+     ======================================================================== */
+  let graineSelectionnee = null;
+  let peintureEnCours = false;
+  const raycaster = new THREE.Raycaster();
+  const curseurNDC = new THREE.Vector2();
+  const barreSemisGraines = document.getElementById("barre-semis-graines");
+  const canevas = sceneManager.renderer.domElement;
+
+  function construireBarreSemis() {
+    barreSemisGraines.innerHTML = "";
+    MondeData.cultures.forEach((culture) => {
+      const bouton = document.createElement("button");
+      bouton.className = "graine-bouton";
+      bouton.textContent = culture.icone;
+      bouton.title = `${culture.nom} (${culture.dureeCroissanceJours} j)`;
+      bouton.addEventListener("click", () => selectionnerGraine(culture.id, bouton));
+      barreSemisGraines.appendChild(bouton);
+    });
+    const annuler = document.createElement("button");
+    annuler.className = "graine-bouton annuler";
+    annuler.textContent = "✖";
+    annuler.title = "Arrêter de semer";
+    annuler.addEventListener("click", () => selectionnerGraine(null, annuler));
+    barreSemisGraines.appendChild(annuler);
+  }
+
+  function selectionnerGraine(cultureId, boutonClique) {
+    graineSelectionnee = graineSelectionnee === cultureId ? null : cultureId;
+    [...barreSemisGraines.children].forEach((b) => b.classList.remove("actif"));
+    if (graineSelectionnee) boutonClique.classList.add("actif");
+    // Pendant le semis, on désactive la rotation caméra (clic-gauche) pour
+    // libérer le clic : zoom (molette) et déplacement restent disponibles.
+    controles.enableRotate = !graineSelectionnee;
+    canevas.style.cursor = graineSelectionnee ? "crosshair" : "default";
+  }
+
+  // Tente de semer la graine sélectionnée sous le curseur ; ignore
+  // silencieusement les parcelles déjà occupées ou l'absence de cible
+  // (permet de "glisser" librement sans message qui s'affole).
+  function semerSousCurseur(evt) {
+    if (!graineSelectionnee) return;
+    const rect = canevas.getBoundingClientRect();
+    curseurNDC.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+    curseurNDC.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(curseurNDC, sceneManager.camera);
+
+    const meshes = terrain.parcelles.map((p) => p.meshTerre);
+    const intersections = raycaster.intersectObjects(meshes);
+    if (intersections.length === 0) return;
+
+    const parcelleEntree = terrain.parcelles.find((p) => p.meshTerre === intersections[0].object);
+    if (parcelleEntree && !parcelleEntree.data.cultureActuelle) {
+      cultures.planter(parcelleEntree, graineSelectionnee, sceneManager.tempsJeuTotal);
+    }
+  }
+
+  canevas.addEventListener("pointerdown", (evt) => {
+    if (evt.button !== 0 || !graineSelectionnee) return;
+    peintureEnCours = true;
+    semerSousCurseur(evt);
+  });
+  canevas.addEventListener("pointermove", (evt) => {
+    if (peintureEnCours) semerSousCurseur(evt);
+  });
+  window.addEventListener("pointerup", () => { peintureEnCours = false; });
+
+  construireBarreSemis();
 
   // --- HUD économie (argent + inventaire) ---------------------------------
   const hudArgent = document.getElementById("hud-argent");
