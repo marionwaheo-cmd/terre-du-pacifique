@@ -73,9 +73,18 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   population chaque jour de jeu.
 - Une fois la population totale suffisante, l'école du village devient
   constructible (**E**, en pièces).
-- Chaque habitant peut être salué (**E**) — texte neutre, sans dialogue :
-  réservé à un futur module (tensions de voisinage, chef de tribu, maire,
-  police), jamais de sujet dramatique ou politique ici.
+- Chaque habitant peut être salué (**E**) — texte neutre, sans dialogue.
+
+**Module 5 — dialogues & conflits de voisinage**
+- De temps en temps, un petit différend anodin survient entre deux
+  habitants d'une même tribu (clôture, animaux égarés…), signalé par une
+  icône ❗ flottante.
+- S'en approcher et appuyer sur **E** ouvre un dialogue à choix : le
+  régler soi-même, ou faire intervenir le chef de tribu, le maire ou la
+  police.
+- Chaque résolution est **toujours amicale** : aucune gravité, aucune
+  issue dramatique, aucun sujet politique — conformément au cahier des
+  charges du projet.
 
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.

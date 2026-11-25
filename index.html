@@ -163,6 +163,21 @@ traduite en géométries/matériaux Three.js originaux.
     ni personnalité — volontairement minimal, c'est le point d'ancrage pour
     un futur module de dialogue (tensions de voisinage, chef de tribu,
     maire, police — voir `MondeData.evenements`, toujours vide ici).
+
+----------------------------------------------------------------------------
+ MODULE 5 — DIALOGUES & CONFLITS DE VOISINAGE
+----------------------------------------------------------------------------
+  - `GestionConflits` déclenche de temps en temps un petit différend anodin
+    entre deux habitants d'une même tribu (clôture, animaux égarés…),
+    catalogué dans `MondeData.catalogueConflits` et instancié dans
+    `MondeData.evenements` (forme annoncée dès le module 1).
+  - Signalé par une icône flottante (❗) ; le joueur s'approche et choisit
+    comment le régler : lui-même, ou en faisant intervenir le chef de
+    tribu, le maire ou la police (dialogue à choix, `panneau-conflit`).
+  - CHAQUE résolution est amicale, quel que soit le choix : aucune gravité,
+    aucune issue dramatique, aucun sujet politique — conformément au
+    cahier des charges. Prêt à être enrichi (conséquences variées, relations
+    entre habitants, nouveaux types de différends) sans changer l'architecture.
 ============================================================================
 -->
 
@@ -383,6 +398,38 @@ traduite en géométries/matériaux Three.js originaux.
   }
   .graine-bouton.actif { border-color: var(--couleur-accent); background: rgba(232,184,75,0.25); }
   .graine-bouton.annuler { font-size: 0.95rem; }
+
+  /* --- Panneau de dialogue / conflit (module 5) ------------------------ */
+  #panneau-conflit {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 340px;
+    max-width: 90vw;
+    padding: 18px;
+    background: var(--couleur-fond-ui);
+    border: 1px solid var(--couleur-accent);
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    z-index: 30;
+    display: none;
+  }
+  #panneau-conflit.visible { display: block; }
+  #panneau-conflit h3 { margin: 0 0 8px; color: var(--couleur-accent); font-size: 0.95rem; }
+  #panneau-conflit p { margin: 0 0 14px; font-size: 0.82rem; line-height: 1.4; opacity: 0.9; }
+  #grille-conflit { display: flex; flex-direction: column; gap: 6px; }
+  .choix-conflit {
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--couleur-accent);
+    background: rgba(255,255,255,0.06);
+    color: var(--couleur-texte);
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+  }
+  .choix-conflit:hover { background: var(--couleur-accent); color: #1c2a1c; }
 </style>
 </head>
 <body>
@@ -423,6 +470,12 @@ traduite en géométries/matériaux Three.js originaux.
 <div id="panneau-plantation">
   <h3>Choisir une culture</h3>
   <div id="grille-plantation"></div>
+</div>
+
+<div id="panneau-conflit">
+  <h3 id="conflit-titre">Différend</h3>
+  <p id="conflit-description"></p>
+  <div id="grille-conflit"></div>
 </div>
 
 <!-- Barre de semis façon "Township" : on sélectionne une graine, puis on
@@ -667,14 +720,27 @@ const MondeData = {
   // temps restant). Acheté à l'épicerie du village.
   engrais: { prixAchat: 15, reductionTemps: 0.3 },
 
-  // --- ÉVÉNEMENTS / CONFLITS ----------------------------------------------
-  // Tableau volontairement vide : aucune logique de conflit n'est implémentée
-  // dans ce module. Forme prévue pour le futur module dialogue/conflits :
-  //   { id, type: "voisinage"|"economie"|..., parties: [pnjId, pnjId],
-  //     statut: "ouvert"|"en_mediation"|"resolu",
-  //     mediateur: "chef_tribu"|"maire"|"police"|null,
-  //     resolution: null }
+  // --- ÉVÉNEMENTS / CONFLITS (module 5) -----------------------------------
+  // Rempli à l'exécution par `GestionConflits`. Volontairement limité à des
+  // tensions de voisinage anodines (clôtures, animaux égarés) : AUCUN sujet
+  // politique, AUCUNE issue dramatique. Chaque conflit se résout toujours à
+  // l'amiable, quel que soit le choix du joueur.
+  //   { id, type: catalogueConflits[].id, zoneId, parties: [pnjId, pnjId],
+  //     statut: "ouvert"|"resolu", mediateur: "joueur"|"chef_tribu"|"maire"|"police"|null,
+  //     resolution: "amical"|null }
   evenements: [],
+
+  // Catalogue des différends possibles — tons neutres, quotidiens, jamais
+  // dramatiques. Un futur module pourra enrichir ce catalogue sans changer
+  // la logique de `GestionConflits`.
+  catalogueConflits: [
+    { id: "cloture", titre: "Un différend de clôture",
+      description: "Deux voisins ne sont pas d'accord sur l'emplacement d'une clôture entre leurs parcelles." },
+    { id: "animaux", titre: "Des animaux égarés",
+      description: "Des poules se sont échappées et ont abîmé le jardin d'un voisin." },
+    { id: "bruit", titre: "Une broutille du quotidien",
+      description: "Un petit désaccord de voisinage envenime l'ambiance depuis quelques jours." },
+  ],
 };
 
 
@@ -2144,6 +2210,7 @@ class GestionPopulation {
   // --- Errance douce des habitants ----------------------------------------
   update(dt) {
     this.terrain.pnjs.forEach((pnj) => {
+      if (pnj._enConflit) return; // reste sur place pendant un différend (module 5)
       if (pnj.pause > 0) { pnj.pause -= dt; return; }
 
       if (!pnj.cible) {
@@ -2227,7 +2294,138 @@ class GestionPopulation {
 
 
 /* ==========================================================================
-   8. BOUCLE DE JEU — main()
+   SILHOUETTE : petit utilitaire de sprite emoji (icônes flottantes) ------
+   ========================================================================== */
+function creerSpriteEmoji(emoji, taille = 1.3) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "92px Segoe UI, Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(emoji, 64, 68);
+  const texture = new THREE.CanvasTexture(canvas);
+  const materiau = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(materiau);
+  sprite.scale.set(taille, taille, 1);
+  return sprite;
+}
+
+
+/* ==========================================================================
+   8. DIALOGUES & CONFLITS DE VOISINAGE — GestionConflits (module 5)
+   ==========================================================================
+   Déclenche de temps en temps un petit différend anodin entre deux
+   habitants d'une même tribu (clôture, animaux égarés…), signalé par une
+   icône flottante. Le joueur peut s'en approcher et choisir comment le
+   régler (lui-même, ou en faisant intervenir le chef de tribu, le maire ou
+   la police), via un dialogue à choix simple. CHAQUE résolution est
+   amicale, quel que soit le choix : ce module ne traite jamais la gravité
+   des conflits, ne propose aucune issue dramatique, et n'aborde aucun
+   sujet politique — conformément au cahier des charges. Il sert de base
+   pour un futur enrichissement (conséquences variées, relations entre
+   habitants, nouveaux types de différends) sans changer son architecture.
+   ========================================================================== */
+
+class GestionConflits {
+  constructor(terrain) {
+    this.terrain = terrain;
+    this.indicateurs = new Map(); // conflitId -> { sprite, a, b }
+    this.prochainDelai = 25 + Math.random() * 20; // premier conflit assez tôt pour être visible
+  }
+
+  update(dt, scene) {
+    this.prochainDelai -= dt;
+    if (this.prochainDelai <= 0) {
+      this._declencherConflitAleatoire(scene);
+      this.prochainDelai = 70 + Math.random() * 90;
+    }
+    // Léger mouvement flottant des icônes de conflit, pour attirer l'œil
+    // sans être intrusif.
+    const t = performance.now() / 1000;
+    this.indicateurs.forEach(({ sprite, base }) => {
+      sprite.position.y = base + Math.sin(t * 2) * 0.12;
+    });
+  }
+
+  _declencherConflitAleatoire(scene) {
+    const parTribu = new Map();
+    this.terrain.pnjs.forEach((p) => {
+      if (p.data.role === "chef_tribu" || p._enConflit) return; // le chef médiatise, il ne se dispute pas
+      if (!parTribu.has(p.zoneId)) parTribu.set(p.zoneId, []);
+      parTribu.get(p.zoneId).push(p);
+    });
+    const candidats = [...parTribu.entries()].filter(([, liste]) => liste.length >= 2);
+    if (candidats.length === 0) return;
+
+    const [zoneId, liste] = candidats[Math.floor(Math.random() * candidats.length)];
+    const melange = [...liste].sort(() => Math.random() - 0.5);
+    const [a, b] = melange;
+    const type = MondeData.catalogueConflits[Math.floor(Math.random() * MondeData.catalogueConflits.length)];
+
+    const conflit = {
+      id: `conflit_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      type: type.id,
+      zoneId,
+      parties: [a.id, b.id],
+      statut: "ouvert",
+      mediateur: null,
+      resolution: null,
+    };
+    MondeData.evenements.push(conflit);
+    a._enConflit = conflit.id;
+    b._enConflit = conflit.id;
+
+    const milieu = a.groupe.position.clone().add(b.groupe.position).multiplyScalar(0.5);
+    const sprite = creerSpriteEmoji("❗");
+    sprite.position.set(milieu.x, milieu.y + 2.3, milieu.z);
+    scene.add(sprite);
+
+    this.indicateurs.set(conflit.id, { sprite, base: milieu.y + 2.3, position: sprite.position, a, b });
+  }
+
+  // Conflits ouverts dont l'icône est proche de `position` (le joueur).
+  conflitsOuvertsPres(position, rayon = 4.5) {
+    return MondeData.evenements
+      .filter((e) => e.statut === "ouvert")
+      .map((e) => ({ evenement: e, entree: this.indicateurs.get(e.id) }))
+      .filter(({ entree }) => entree && entree.position.distanceTo(position) <= rayon);
+  }
+
+  obtenirCatalogue(conflit) {
+    return MondeData.catalogueConflits.find((c) => c.id === conflit.type);
+  }
+
+  // Résout le conflit à l'amiable, quel que soit le médiateur choisi.
+  // Retourne le texte de résolution à afficher au joueur.
+  resoudre(conflit, mediateur, scene) {
+    conflit.statut = "resolu";
+    conflit.mediateur = mediateur;
+    conflit.resolution = "amical";
+
+    const entree = this.indicateurs.get(conflit.id);
+    if (entree) {
+      scene.remove(entree.sprite);
+      entree.sprite.material.map.dispose();
+      entree.sprite.material.dispose();
+      entree.a._enConflit = null;
+      entree.b._enConflit = null;
+      this.indicateurs.delete(conflit.id);
+    }
+
+    const textes = {
+      joueur: "Vous écoutez les deux parties, qui finissent par trouver un terrain d'entente.",
+      chef_tribu: "Le chef de tribu écoute chacun avec attention ; un accord est trouvé selon la coutume.",
+      maire: "Le maire propose une solution raisonnable, acceptée par les deux voisins.",
+      police: "La police rappelle les règles de bon voisinage ; la situation se calme rapidement.",
+    };
+    return textes[mediateur] || "Le différend est réglé à l'amiable.";
+  }
+}
+
+
+/* ==========================================================================
+   9. BOUCLE DE JEU — main()
    ==========================================================================
    Assemble les modules précédents, gère la caméra suiveuse (orbitale
    autour du personnage via OrbitControls), détecte la zone courante pour
@@ -2246,6 +2444,7 @@ function main() {
   const joueur = { argent: 50, engrais: 1, inventaire: {} };
   const cultures = new GestionCultures(terrain.parcelles, joueur);
   const population = new GestionPopulation(terrain, joueur);
+  const conflits = new GestionConflits(terrain);
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -2407,6 +2606,20 @@ function main() {
       }
     }
 
+    // Différends de voisinage (module 5) : prioritaires sur la simple
+    // salutation si un conflit ouvert est à proximité.
+    if (!cibleCourante) {
+      const proches = conflits.conflitsOuvertsPres(pos);
+      if (proches.length > 0) {
+        const { evenement } = proches[0];
+        const info = conflits.obtenirCatalogue(evenement);
+        cibleCourante = {
+          libelle: `E : régler le différend (${info.titre})`,
+          action: () => ouvrirPanneauConflit(evenement, info),
+        };
+      }
+    }
+
     // Habitants (PNJ) : simple salutation, point d'ancrage pour un futur
     // module de dialogue (jamais de conflit ou de sujet dramatique ici).
     if (!cibleCourante) {
@@ -2546,6 +2759,38 @@ function main() {
   window.addEventListener("pointerup", () => { peintureEnCours = false; });
 
   construireBarreSemis();
+
+  // --- Dialogue de résolution de conflit (module 5) -----------------------
+  const panneauConflit = document.getElementById("panneau-conflit");
+  const conflitTitre = document.getElementById("conflit-titre");
+  const conflitDescription = document.getElementById("conflit-description");
+  const grilleConflit = document.getElementById("grille-conflit");
+
+  function ouvrirPanneauConflit(evenement, info) {
+    conflitTitre.textContent = info.titre;
+    conflitDescription.textContent = info.description;
+    grilleConflit.innerHTML = "";
+
+    const choix = [
+      { id: "joueur", libelle: "💬 Écouter et proposer un compromis vous-même" },
+      { id: "chef_tribu", libelle: "👴 Faire intervenir le chef de tribu" },
+      { id: "maire", libelle: "🏛️ Faire intervenir le maire" },
+      { id: "police", libelle: "👮 Faire intervenir la police" },
+    ];
+    choix.forEach((option) => {
+      const bouton = document.createElement("button");
+      bouton.className = "choix-conflit";
+      bouton.textContent = option.libelle;
+      bouton.addEventListener("click", () => {
+        const texte = conflits.resoudre(evenement, option.id, sceneManager.scene);
+        panneauConflit.classList.remove("visible");
+        afficherMessage(texte);
+      });
+      grilleConflit.appendChild(bouton);
+    });
+
+    panneauConflit.classList.add("visible");
+  }
 
   // --- HUD économie (argent + inventaire) ---------------------------------
   const hudArgent = document.getElementById("hud-argent");
@@ -2708,6 +2953,7 @@ function main() {
     foyers.forEach((f) => f.update(dt));
     cultures.update(sceneManager.tempsJeuTotal);
     population.update(dt);
+    conflits.update(dt, sceneManager.scene);
     if (sceneManager.jourJeu !== dernierJourTraite) {
       dernierJourTraite = sceneManager.jourJeu;
       population.nouveauJour();
