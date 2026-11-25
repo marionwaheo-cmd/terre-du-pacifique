@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terre du Pacifique — Prototype de ferme-gestion 3D</title>
+
+<!--
+============================================================================
+ TERRE DU PACIFIQUE — FONDATIONS TECHNIQUES (MODULE 1/N)
+============================================================================
+
+RÉSUMÉ DU PROJET
+-----------------
+Jeu de gestion type "farming sim" en 3D, jouable dans le navigateur, situé
+dans un territoire fictif inspiré de la Nouvelle-Calédonie. Ce fichier est
+un livrable AUTONOME (aucune installation, aucun build) qui pose :
+  - la scène 3D (terrain, ciel, éclairage, eau),
+  - trois types de zones logiques (village / tribus / plantations),
+  - un personnage jouable contrôlable au clavier avec caméra suiveuse,
+  - une architecture de données extensible (zones, cultures, PNJ, événements).
+
+ARCHITECTURE DU CODE (tout est dans ce fichier, mais découpé en sections
+clairement séparées et commentées comme s'il s'agissait de modules) :
+
+  1. DONNÉES DU MONDE (`MondeData`)
+     Source de vérité déclarative : liste des zones, de leurs sous-parcelles,
+     des cultures disponibles (même non plantées), et des emplacements
+     réservés aux futurs PNJ / événements. Un futur module "économie" ou
+     "cultures" n'aura qu'à lire/écrire dans ces structures, sans toucher
+     au moteur 3D.
+
+  2. MOTEUR DE SCÈNE (`SceneManager`)
+     Initialise Three.js (scène, caméra, renderer, lumières, ciel, eau,
+     boucle de rendu). Ne connaît rien du gameplay.
+
+  3. CONSTRUCTEUR DE TERRAIN (`TerrainBuilder`)
+     Génère le sol (relief doux), et pour chaque zone de `MondeData` :
+     une couleur de sol distincte, des bâtiments génériques (silhouettes,
+     pas de détail ethnique précis), des clôtures simples. Chaque bâtiment
+     / parcelle généré porte une référence (`userData.zoneId`, `.parcelleId`)
+     pour que les modules futurs (récolte, dialogue, achat) puissent
+     retrouver l'objet 3D correspondant à une donnée de `MondeData`.
+
+  4. PERSONNAGE JOUABLE (`Personnage`)
+     Capsule/silhouette low-poly générique, déplacement clavier (WASD /
+     flèches), rotation vers la direction de marche, caméra qui suit.
+     Pensé pour être remplacé plus tard par un modèle détaillé (module 4)
+     sans changer l'API (`personnage.position`, `.update(dt)`).
+
+  5. BOUCLE DE JEU (`main`)
+     Assemble les modules, gère le resize, la boucle `requestAnimationFrame`.
+
+POINTS D'EXTENSION PRÉVUS POUR LES MODULES SUIVANTS
+----------------------------------------------------
+  - MODULE CULTURES : `MondeData.cultures` contient déjà les espèces
+    (igname, pastèque, tomate, taro, manioc, café...) avec des champs
+    `dureeCroissanceJours`, `prixVenteBase`, `zonesCompatibles`. Chaque
+    parcelle de plantation (`parcelle.cultureActuelle`) est prête à
+    recevoir un état de culture (stade de croissance, date de plantation).
+  - MODULE ÉCONOMIE : chaque bâtiment du village a un champ `commerce`
+    (type, inventaire vide, prix) prêt à être relié à un système d'achat/
+    vente. Les tribus ont un champ `revenuMenage` initialisé à 0.
+  - MODULE PNJ / POPULATION : `MondeData.pnjSlots` réserve des positions
+    (sans PNJ instanciés) dans chaque tribu, avec un champ `communaute`
+    (kanak, wallisienne, futunienne, tahitienne, javanaise, autre...) pour
+    plus tard associer silhouettes/costumes stylistiquement différenciés.
+    Un champ `population` et un seuil `seuilConstructionEcole` existent déjà.
+  - MODULE ÉVÉNEMENTS / CONFLITS : `MondeData.evenements` est un tableau
+    vide typé (voir commentaire dans le code) prêt à recevoir des objets
+    `{type, parties, statut, resolution}` et un futur système de dialogue
+    à choix (chef de tribu / maire / police). AUCUNE logique de conflit
+    n'est implémentée ici, volontairement.
+  - MODULE VISUELS PERSONNALISÉS : toutes les géométries sont génériques
+    et paramétrées (couleurs par zone dans `MondeData.palette`), afin de
+    pouvoir être remplacées par des modèles/textures de référence sans
+    toucher à la logique de placement.
+
+LIMITES TECHNIQUES CONNUES (voir aussi les messages console au chargement)
+----------------------------------------------------------------------------
+  - Pas d'ombres portées par tous les objets (seulement le sol + personnage)
+    afin de garder de bonnes performances sur machine standard.
+  - Le plan d'eau est une approximation stylisée (shader simple), pas une
+    simulation physique de vagues.
+  - Les bâtiments sont des silhouettes géométriques simples (boîtes, toits
+    pentus) : volontaire à ce stade, en attendant les visuels de référence
+    du module 4.
+  - Aucune gestion de collision fine (le personnage ne traverse pas les
+    limites du terrain, mais peut traverser les bâtiments) : à raffiner
+    si besoin dans un module ultérieur.
+============================================================================
+-->
+
+<style>
+  :root {
+    --couleur-texte: #f5f0e6;
+    --couleur-fond-ui: rgba(20, 30, 20, 0.72);
+    --couleur-accent: #e8b84b;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    background: #0b1020;
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: var(--couleur-texte);
+  }
+  canvas { display: block; }
+
+  #ui-chargement {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #16321f 0%, #07140c 100%);
+    z-index: 50;
+    transition: opacity 0.6s ease;
+  }
+  #ui-chargement h1 {
+    font-size: 1.6rem;
+    letter-spacing: 0.05em;
+    color: var(--couleur-accent);
+    margin-bottom: 0.5rem;
+  }
+  #ui-chargement p { opacity: 0.8; font-size: 0.9rem; }
+  .barre-progression {
+    width: 260px;
+    height: 6px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+    margin-top: 1rem;
+    overflow: hidden;
+  }
+  .barre-progression > div {
+    height: 100%;
+    width: 0%;
+    background: var(--couleur-accent);
+    transition: width 0.3s ease;
+  }
+
+  #hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    padding: 10px 14px;
+    background: var(--couleur-fond-ui);
+    border-radius: 10px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    backdrop-filter: blur(4px);
+    z-index: 10;
+    pointer-events: none;
+    max-width: 280px;
+  }
+  #hud strong { color: var(--couleur-accent); }
+
+  #hud-zone {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 18px;
+    background: var(--couleur-fond-ui);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  #hud-zone.visible { opacity: 1; }
+
+  #avertissement {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    max-width: 260px;
+    padding: 10px 14px;
+    background: rgba(120, 40, 20, 0.75);
+    border-radius: 10px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    z-index: 10;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui-chargement">
+  <h1>TERRE DU PACIFIQUE</h1>
+  <p>Chargement de la scène 3D…</p>
+  <div class="barre-progression"><div id="barre-interne"></div></div>
+</div>
+
+<div id="hud">
+  <strong>Déplacement :</strong> W/A/S/D ou flèches<br>
+  <strong>Caméra :</strong> clic-gauche + glisser pour orbiter, molette pour zoomer<br>
+  <strong>Zone actuelle :</strong> <span id="hud-zone-nom">—</span>
+</div>
+
+<div id="hud-zone"></div>
+<div id="avertissement" id="avertissement-perf"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+/* ==========================================================================
+   1. DONNÉES DU MONDE — MondeData
+   ==========================================================================
+   Structure déclarative, extensible, qui décrit tout le contenu "logique"
+   de la carte. Le moteur 3D (sections 2-3) lit ces données pour générer
+   la scène ; les futurs modules (économie, cultures, PNJ, événements)
+   liront/écriront dans ces mêmes structures sans toucher au rendu.
+   ========================================================================== */
+
+const MondeData = {
+
+  // Palette de couleurs par type de zone (facilement remplaçable par les
+  // visuels de référence du module 4 : costumes, végétation, architecture).
+  palette: {
+    village:    { sol: 0xcdbd8f, accent: 0xb5763a },
+    tribu:      { sol: 0x8fae5c, accent: 0x6b4a2b },
+    plantation: { sol: 0x9c7b3f, accent: 0x3f7d3a },
+    route:      0xaa9b7a,
+    eau:        0x2f7f8f,
+  },
+
+  // --- ZONES -------------------------------------------------------------
+  // type: "village" | "tribu" | "plantation"
+  // position/taille en unités monde (1 unité ≈ 1 mètre)
+  zones: [
+    {
+      id: "village_central",
+      type: "village",
+      nom: "Village de Wateo",
+      centre: { x: 0, z: 0 },
+      taille: { largeur: 36, profondeur: 30 },
+      // Bâtiments génériques (silhouettes). `commerce` prépare le module économie.
+      batiments: [
+        { id: "mairie", type: "mairie", position: { x: -10, z: -8 }, commerce: null },
+        { id: "cooperative_agricole", type: "commerce", position: { x: 6, z: -6 },
+          commerce: { nom: "Coopérative agricole", achete: ["igname", "pasteque", "tomate"], inventaire: {}, caisse: 0 } },
+        { id: "epicerie", type: "commerce", position: { x: 10, z: 4 },
+          commerce: { nom: "Épicerie du village", vend: ["outils", "semences"], inventaire: {}, caisse: 0 } },
+        { id: "ecole_future", type: "emplacement_reserve", position: { x: -14, z: 6 },
+          commerce: null, note: "Emplacement réservé — construction d'école (module population)" },
+      ],
+    },
+    {
+      id: "tribu_wae",
+      type: "tribu",
+      nom: "Tribu de Waé",
+      centre: { x: -46, z: -34 },
+      taille: { largeur: 30, profondeur: 26 },
+      communaute: "kanak",
+      population: 24,
+      seuilConstructionEcole: 40,
+      revenuMenage: 0,
+      cases: [
+        { id: "case_1", position: { x: -52, z: -40 } },
+        { id: "case_2", position: { x: -40, z: -42 } },
+        { id: "case_3", position: { x: -44, z: -28 } },
+        { id: "case_chef", position: { x: -56, z: -28 }, estCheferie: true },
+      ],
+      // Emplacements réservés pour de futurs PNJ (module population/dialogue).
+      pnjSlots: [
+        { id: "pnj_wae_1", position: { x: -51, z: -39 }, role: "habitant" },
+        { id: "pnj_wae_2", position: { x: -45, z: -27 }, role: "habitant" },
+        { id: "pnj_wae_chef", position: { x: -55, z: -29 }, role: "chef_tribu" },
+      ],
+    },
+    {
+      id: "tribu_kaala",
+      type: "tribu",
+      nom: "Tribu de Kaala",
+      centre: { x: 44, z: -38 },
+      taille: { largeur: 28, profondeur: 24 },
+      communaute: "wallisienne_futunienne",
+      population: 18,
+      seuilConstructionEcole: 40,
+      revenuMenage: 0,
+      cases: [
+        { id: "case_1", position: { x: 38, z: -44 } },
+        { id: "case_2", position: { x: 50, z: -42 } },
+        { id: "case_3", position: { x: 46, z: -30 } },
+      ],
+      pnjSlots: [
+        { id: "pnj_kaala_1", position: { x: 39, z: -43 }, role: "habitant" },
+        { id: "pnj_kaala_2", position: { x: 47, z: -29 }, role: "habitant" },
+      ],
+    },
+    {
+      id: "tribu_tiendi",
+      type: "tribu",
+      nom: "Tribu de Tiendi",
+      centre: { x: -8, z: 48 },
+      taille: { largeur: 26, profondeur: 24 },
+      communaute: "mixte_pacifique_asie",
+      population: 21,
+      seuilConstructionEcole: 40,
+      revenuMenage: 0,
+      cases: [
+        { id: "case_1", position: { x: -14, z: 42 } },
+        { id: "case_2", position: { x: -2, z: 44 } },
+        { id: "case_3", position: { x: -10, z: 54 } },
+      ],
+      pnjSlots: [
+        { id: "pnj_tiendi_1", position: { x: -13, z: 43 }, role: "habitant" },
+        { id: "pnj_tiendi_2", position: { x: -3, z: 45 }, role: "habitant" },
+      ],
+    },
+
+    // --- PLANTATIONS (en périphérie des tribus) ---------------------------
+    {
+      id: "plantation_wae",
+      type: "plantation",
+      nom: "Plantations de Waé",
+      centre: { x: -62, z: -10 },
+      taille: { largeur: 34, profondeur: 26 },
+      tribuAssociee: "tribu_wae",
+      parcelles: [
+        { id: "p_wae_1", position: { x: -72, z: -18 }, taille: 6, cultureActuelle: null },
+        { id: "p_wae_2", position: { x: -62, z: -18 }, taille: 6, cultureActuelle: null },
+        { id: "p_wae_3", position: { x: -52, z: -18 }, taille: 6, cultureActuelle: null },
+        { id: "p_wae_4", position: { x: -72, z: -4 },  taille: 6, cultureActuelle: null },
+        { id: "p_wae_5", position: { x: -62, z: -4 },  taille: 6, cultureActuelle: null },
+        { id: "p_wae_6", position: { x: -52, z: -4 },  taille: 6, cultureActuelle: null },
+      ],
+    },
+    {
+      id: "plantation_kaala",
+      type: "plantation",
+      nom: "Plantations de Kaala",
+      centre: { x: 62, z: -12 },
+      taille: { largeur: 30, profondeur: 24 },
+      tribuAssociee: "tribu_kaala",
+      parcelles: [
+        { id: "p_kaala_1", position: { x: 54, z: -18 }, taille: 6, cultureActuelle: null },
+        { id: "p_kaala_2", position: { x: 64, z: -18 }, taille: 6, cultureActuelle: null },
+        { id: "p_kaala_3", position: { x: 54, z: -6 },  taille: 6, cultureActuelle: null },
+        { id: "p_kaala_4", position: { x: 64, z: -6 },  taille: 6, cultureActuelle: null },
+      ],
+    },
+    {
+      id: "plantation_tiendi",
+      type: "plantation",
+      nom: "Plantations de Tiendi",
+      centre: { x: -6, z: 70 },
+      taille: { largeur: 30, profondeur: 22 },
+      tribuAssociee: "tribu_tiendi",
+      parcelles: [
+        { id: "p_tiendi_1", position: { x: -14, z: 64 }, taille: 6, cultureActuelle: null },
+        { id: "p_tiendi_2", position: { x: -4, z: 64 },  taille: 6, cultureActuelle: null },
+        { id: "p_tiendi_3", position: { x: -14, z: 76 }, taille: 6, cultureActuelle: null },
+        { id: "p_tiendi_4", position: { x: -4, z: 76 },  taille: 6, cultureActuelle: null },
+      ],
+    },
+  ],
+
+  // --- CULTURES DISPONIBLES (catalogue, module "cultures" à venir) -------
+  cultures: [
+    { id: "igname",   nom: "Igname",   dureeCroissanceJours: 7, prixVenteBase: 12, zonesCompatibles: ["plantation"] },
+    { id: "pasteque", nom: "Pastèque", dureeCroissanceJours: 5, prixVenteBase: 9,  zonesCompatibles: ["plantation"] },
+    { id: "tomate",   nom: "Tomate",   dureeCroissanceJours: 3, prixVenteBase: 6,  zonesCompatibles: ["plantation"] },
+    { id: "taro",     nom: "Taro",     dureeCroissanceJours: 6, prixVenteBase: 10, zonesCompatibles: ["plantation"] },
+    { id: "manioc",   nom: "Manioc",   dureeCroissanceJours: 8, prixVenteBase: 8,  zonesCompatibles: ["plantation"] },
+    { id: "cafe",     nom: "Café",     dureeCroissanceJours: 14,prixVenteBase: 20, zonesCompatibles: ["plantation"] },
+  ],
+
+  // --- ÉVÉNEMENTS / CONFLITS ----------------------------------------------
+  // Tableau volontairement vide : aucune logique de conflit n'est implémentée
+  // dans ce module. Forme prévue pour le futur module dialogue/conflits :
+  //   { id, type: "voisinage"|"economie"|..., parties: [pnjId, pnjId],
+  //     statut: "ouvert"|"en_mediation"|"resolu",
+  //     mediateur: "chef_tribu"|"maire"|"police"|null,
+  //     resolution: null }
+  evenements: [],
+};
+
+
+/* ==========================================================================
+   2. MOTEUR DE SCÈNE — SceneManager
+   ==========================================================================
+   Met en place la scène Three.js de base : caméra, lumières, ciel, eau,
+   renderer et boucle de rendu. Ne connaît rien du contenu "gameplay".
+   ========================================================================== */
+
+class SceneManager {
+  constructor(conteneur) {
+    this.horloge = new THREE.Clock();
+
+    // --- Scène & brouillard (ambiance tropicale, profondeur douce) -------
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0xaed4e8);
+    this.scene.fog = new THREE.FogExp2(0xaed4e8, 0.0035);
+
+    // --- Caméra ------------------------------------------------------------
+    this.camera = new THREE.PerspectiveCamera(
+      55, window.innerWidth / window.innerHeight, 0.1, 2000
+    );
+    this.camera.position.set(0, 14, 18);
+
+    // --- Renderer ------------------------------------------------------------
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    conteneur.appendChild(this.renderer.domElement);
+
+    this._creerEclairage();
+    this._creerCiel();
+    this._creerEau();
+
+    window.addEventListener("resize", () => this._surRedimensionnement());
+  }
+
+  _creerEclairage() {
+    // Lumière chaude tropicale (soleil bas, légèrement orangé) + ambiance douce.
+    this.soleil = new THREE.DirectionalLight(0xfff1d6, 2.4);
+    this.soleil.position.set(-60, 90, 40);
+    this.soleil.castShadow = true;
+    this.soleil.shadow.mapSize.set(2048, 2048);
+    this.soleil.shadow.camera.near = 1;
+    this.soleil.shadow.camera.far = 300;
+    this.soleil.shadow.camera.left = -140;
+    this.soleil.shadow.camera.right = 140;
+    this.soleil.shadow.camera.top = 140;
+    this.soleil.shadow.camera.bottom = -140;
+    this.soleil.shadow.bias = -0.0015;
+    this.scene.add(this.soleil);
+
+    const lumiereAmbiante = new THREE.HemisphereLight(0xbfe3f0, 0x4a3b2a, 1.1);
+    this.scene.add(lumiereAmbiante);
+
+    // Léger remplissage pour adoucir les ombres portées (sans coût de shadow map).
+    const remplissage = new THREE.DirectionalLight(0xcfe8ff, 0.35);
+    remplissage.position.set(40, 30, -40);
+    this.scene.add(remplissage);
+  }
+
+  _creerCiel() {
+    // Ciel "dynamique" simplifié : grand dôme en dégradé via shader custom léger.
+    const geometrieCiel = new THREE.SphereGeometry(900, 24, 16);
+    const materiauCiel = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: {
+        couleurHaut: { value: new THREE.Color(0x4a90c0) },
+        couleurBas:  { value: new THREE.Color(0xe8d9a8) },
+      },
+      vertexShader: `
+        varying vec3 vPosition;
+        void main() {
+          vPosition = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vPosition;
+        uniform vec3 couleurHaut;
+        uniform vec3 couleurBas;
+        void main() {
+          float hauteur = normalize(vPosition).y * 0.5 + 0.5;
+          gl_FragColor = vec4(mix(couleurBas, couleurHaut, pow(hauteur, 0.7)), 1.0);
+        }
+      `,
+    });
+    this.ciel = new THREE.Mesh(geometrieCiel, materiauCiel);
+    this.scene.add(this.ciel);
+  }
+
+  _creerEau() {
+    // Plan d'eau stylisé (bord de mer au sud de la carte) — approximation
+    // visuelle simple, sans simulation physique de vagues (cf. limites).
+    const geometrieEau = new THREE.PlaneGeometry(400, 160, 1, 1);
+    const materiauEau = new THREE.MeshStandardMaterial({
+      color: MondeData.palette.eau,
+      transparent: true,
+      opacity: 0.85,
+      roughness: 0.3,
+      metalness: 0.1,
+    });
+    this.eau = new THREE.Mesh(geometrieEau, materiauEau);
+    this.eau.rotation.x = -Math.PI / 2;
+    this.eau.position.set(0, -0.3, 140);
+    this.eau.receiveShadow = true;
+    this.scene.add(this.eau);
+  }
+
+  _surRedimensionnement() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+
+/* ==========================================================================
+   3. CONSTRUCTEUR DE TERRAIN — TerrainBuilder
+   ==========================================================================
+   Lit `MondeData` et génère : le sol avec relief doux, les zones colorées,
+   les bâtiments/cases/parcelles génériques, les routes et les clôtures.
+   Chaque objet généré porte `userData` pour être retrouvé par les modules
+   futurs (économie, cultures, dialogue).
+   ========================================================================== */
+
+class TerrainBuilder {
+  constructor(scene) {
+    this.scene = scene;
+    this.groupeMonde = new THREE.Group();
+    this.groupeMonde.name = "MondeGenere";
+    this.scene.add(this.groupeMonde);
+
+    this._genererSolBase();
+    MondeData.zones.forEach((zone) => this._genererZone(zone));
+    this._genererRoutes();
+    this._genererVegetationDeFond();
+  }
+
+  // --- Sol principal avec léger relief (bruit procédural simple) ---------
+  _genererSolBase() {
+    const taille = 420;
+    const segments = 120;
+    const geometrie = new THREE.PlaneGeometry(taille, taille, segments, segments);
+    const positions = geometrie.attributes.position;
+
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const y = positions.getY(i); // avant rotation, "y" = profondeur (z monde)
+      // Relief doux : combinaison de sinusoïdes basse fréquence.
+      let hauteur =
+        Math.sin(x * 0.02) * 1.2 +
+        Math.cos(y * 0.025) * 1.0 +
+        Math.sin((x + y) * 0.01) * 0.8;
+      // Aplatissement progressif vers le sud (bord de mer autour de z=140).
+      const facteurPlage = THREE.MathUtils.smoothstep(y, 90, 150);
+      hauteur = THREE.MathUtils.lerp(hauteur, -0.6, facteurPlage);
+      positions.setZ(i, hauteur);
+    }
+    geometrie.computeVertexNormals();
+
+    const materiau = new THREE.MeshStandardMaterial({
+      color: 0x6f9a4a,
+      roughness: 0.95,
+      metalness: 0.0,
+    });
+    this.sol = new THREE.Mesh(geometrie, materiau);
+    this.sol.rotation.x = -Math.PI / 2;
+    this.sol.receiveShadow = true;
+    this.sol.name = "SolPrincipal";
+    this.groupeMonde.add(this.sol);
+
+    // Fonction d'échantillonnage de hauteur réutilisable par le personnage.
+    this.obtenirHauteurSol = (x, z) => {
+      let hauteur =
+        Math.sin(x * 0.02) * 1.2 +
+        Math.cos(z * 0.025) * 1.0 +
+        Math.sin((x + z) * 0.01) * 0.8;
+      const facteurPlage = THREE.MathUtils.smoothstep(z, 90, 150);
+      return THREE.MathUtils.lerp(hauteur, -0.6, facteurPlage);
+    };
+  }
+
+  // --- Génère une zone (patch de couleur + contenu) -----------------------
+  _genererZone(zone) {
+    const groupeZone = new THREE.Group();
+    groupeZone.name = `Zone_${zone.id}`;
+    groupeZone.userData = { zoneId: zone.id, zoneType: zone.type, zoneNom: zone.nom };
+
+    // Patch de sol coloré (légèrement surélevé pour éviter le z-fighting).
+    const couleurs = MondeData.palette[zone.type];
+    const geometriePatch = new THREE.CircleGeometry(
+      Math.max(zone.taille.largeur, zone.taille.profondeur) * 0.62, 24
+    );
+    const materiauPatch = new THREE.MeshStandardMaterial({
+      color: couleurs.sol, roughness: 0.9, transparent: true, opacity: 0.88,
+    });
+    const patch = new THREE.Mesh(geometriePatch, materiauPatch);
+    patch.rotation.x = -Math.PI / 2;
+    const hSol = this.obtenirHauteurSol(zone.centre.x, zone.centre.z);
+    patch.position.set(zone.centre.x, hSol + 0.03, zone.centre.z);
+    patch.receiveShadow = true;
+    groupeZone.add(patch);
+
+    // Clôture simple délimitant la zone (sauf plantations : clôtures basses déjà incluses par parcelle).
+    if (zone.type !== "plantation") {
+      groupeZone.add(this._genererClotureRectangulaire(zone.centre, zone.taille, couleurs.accent));
+    }
+
+    // Étiquette de zone flottante (sprite texte simple, sans dépendance externe).
+    groupeZone.add(this._genererEtiquette(zone.nom, zone.centre, hSol + 6));
+
+    if (zone.type === "village") {
+      zone.batiments.forEach((b) => groupeZone.add(this._genererBatiment(b, zone)));
+    } else if (zone.type === "tribu") {
+      zone.cases.forEach((c) => groupeZone.add(this._genererCase(c, zone)));
+      // Emplacements PNJ réservés : marqueurs discrets (cf. module population).
+      zone.pnjSlots.forEach((slot) => groupeZone.add(this._genererMarqueurPNJSlot(slot)));
+    } else if (zone.type === "plantation") {
+      zone.parcelles.forEach((p) => groupeZone.add(this._genererParcelle(p, zone)));
+    }
+
+    this.groupeMonde.add(groupeZone);
+  }
+
+  _genererClotureRectangulaire(centre, taille, couleur) {
+    const groupe = new THREE.Group();
+    const demiL = taille.largeur / 2 + 1;
+    const demiP = taille.profondeur / 2 + 1;
+    const hauteurPoteau = 1.4;
+    const materiau = new THREE.MeshStandardMaterial({ color: couleur, roughness: 0.8 });
+    const geometriePoteau = new THREE.CylinderGeometry(0.08, 0.1, hauteurPoteau, 6);
+
+    const pointsPerimetre = [];
+    const pas = 3;
+    for (let x = -demiL; x <= demiL; x += pas) pointsPerimetre.push([x, -demiP]);
+    for (let x = -demiL; x <= demiL; x += pas) pointsPerimetre.push([x, demiP]);
+    for (let z = -demiP; z <= demiP; z += pas) pointsPerimetre.push([-demiL, z]);
+    for (let z = -demiP; z <= demiP; z += pas) pointsPerimetre.push([demiL, z]);
+
+    pointsPerimetre.forEach(([dx, dz]) => {
+      const poteau = new THREE.Mesh(geometriePoteau, materiau);
+      const h = this.obtenirHauteurSol(centre.x + dx, centre.z + dz);
+      poteau.position.set(centre.x + dx, h + hauteurPoteau / 2, centre.z + dz);
+      poteau.castShadow = true;
+      groupe.add(poteau);
+    });
+    return groupe;
+  }
+
+  // Bâtiment générique : socle + corps + toit pentu. Paramétrable par type.
+  _genererBatiment(batiment, zone) {
+    const groupe = new THREE.Group();
+    groupe.name = `Batiment_${batiment.id}`;
+    groupe.userData = { ...batiment, zoneId: zone.id };
+
+    const h = this.obtenirHauteurSol(zone.centre.x + batiment.position.x, zone.centre.z + batiment.position.z);
+    const estReserve = batiment.type === "emplacement_reserve";
+
+    const largeur = batiment.type === "mairie" ? 7 : 5.5;
+    const profondeur = batiment.type === "mairie" ? 6 : 5;
+    const hauteurMurs = batiment.type === "mairie" ? 4.2 : 3.2;
+
+    const couleurMur = estReserve ? 0xcccccc : 0xe4d9bd;
+    const materiauMur = new THREE.MeshStandardMaterial({
+      color: couleurMur, roughness: 0.85, transparent: estReserve, opacity: estReserve ? 0.35 : 1,
+    });
+    const corps = new THREE.Mesh(new THREE.BoxGeometry(largeur, hauteurMurs, profondeur), materiauMur);
+    corps.position.y = hauteurMurs / 2;
+    corps.castShadow = !estReserve;
+    corps.receiveShadow = true;
+    groupe.add(corps);
+
+    if (!estReserve) {
+      const materiauToit = new THREE.MeshStandardMaterial({ color: 0xa33d2b, roughness: 0.7 });
+      const toit = new THREE.Mesh(new THREE.ConeGeometry(largeur * 0.75, 2.2, 4), materiauToit);
+      toit.rotation.y = Math.PI / 4;
+      toit.position.y = hauteurMurs + 1.1;
+      toit.castShadow = true;
+      groupe.add(toit);
+    }
+
+    groupe.position.set(
+      zone.centre.x + batiment.position.x,
+      h,
+      zone.centre.z + batiment.position.z
+    );
+    return groupe;
+  }
+
+  // Case traditionnelle générique (forme ronde + toit conique haut) — silhouette
+  // volontairement sobre et non-caricaturale, sans ornement culturel spécifique.
+  _genererCase(caseData, zone) {
+    const groupe = new THREE.Group();
+    groupe.name = `Case_${caseData.id}`;
+    groupe.userData = { ...caseData, zoneId: zone.id };
+
+    const h = this.obtenirHauteurSol(zone.centre.x + caseData.position.x, zone.centre.z + caseData.position.z);
+    const rayon = caseData.estCheferie ? 3.2 : 2.4;
+    const hauteurMur = caseData.estCheferie ? 2.4 : 1.9;
+
+    const materiauMur = new THREE.MeshStandardMaterial({ color: 0xd8c08a, roughness: 0.9 });
+    const mur = new THREE.Mesh(new THREE.CylinderGeometry(rayon, rayon, hauteurMur, 12), materiauMur);
+    mur.position.y = hauteurMur / 2;
+    mur.castShadow = true;
+    mur.receiveShadow = true;
+    groupe.add(mur);
+
+    const materiauToit = new THREE.MeshStandardMaterial({ color: 0x5c4326, roughness: 0.95 });
+    const toit = new THREE.Mesh(new THREE.ConeGeometry(rayon * 1.15, caseData.estCheferie ? 3.4 : 2.4, 12), materiauToit);
+    toit.position.y = hauteurMur + (caseData.estCheferie ? 1.7 : 1.2);
+    toit.castShadow = true;
+    groupe.add(toit);
+
+    // Flèche décorative sommitale pour la grande case (silhouette générique,
+    // sans reproduction d'un ornement culturel précis).
+    if (caseData.estCheferie) {
+      const fleche = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.1, 1.6, 6),
+        new THREE.MeshStandardMaterial({ color: 0x3a2a18 })
+      );
+      fleche.position.y = hauteurMur + 3.4 + 0.8;
+      groupe.add(fleche);
+    }
+
+    groupe.position.set(
+      zone.centre.x + caseData.position.x,
+      h,
+      zone.centre.z + caseData.position.z
+    );
+    return groupe;
+  }
+
+  // Marqueur discret pour un emplacement de PNJ réservé (invisible en jeu
+  // normal : petite balise semi-transparente, utile en développement).
+  _genererMarqueurPNJSlot(slot) {
+    const geometrie = new THREE.ConeGeometry(0.3, 0.9, 8);
+    const materiau = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+    const marqueur = new THREE.Mesh(geometrie, materiau);
+    marqueur.name = `PNJSlot_${slot.id}`;
+    marqueur.userData = { ...slot, estEmplacementReserve: true };
+    const h = this.obtenirHauteurSol(slot.position.x, slot.position.z);
+    marqueur.position.set(slot.position.x, h + 0.6, slot.position.z);
+    return marqueur;
+  }
+
+  // Parcelle de plantation : carré de terre labourée + petite clôture basse.
+  _genererParcelle(parcelle, zone) {
+    const groupe = new THREE.Group();
+    groupe.name = `Parcelle_${parcelle.id}`;
+    groupe.userData = { ...parcelle, zoneId: zone.id, tribuAssociee: zone.tribuAssociee };
+
+    const h = this.obtenirHauteurSol(parcelle.position.x, parcelle.position.z);
+    const materiauTerre = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1.0 });
+    const terre = new THREE.Mesh(new THREE.BoxGeometry(parcelle.taille, 0.2, parcelle.taille), materiauTerre);
+    terre.position.set(parcelle.position.x, h + 0.1, parcelle.position.z);
+    terre.receiveShadow = true;
+    groupe.add(terre);
+
+    // Sillons simples (lignes parallèles) pour suggérer une parcelle cultivable.
+    const materiauSillon = new THREE.MeshStandardMaterial({ color: 0x4a3420, roughness: 1.0 });
+    const nbSillons = 4;
+    for (let i = 0; i < nbSillons; i++) {
+      const sillon = new THREE.Mesh(
+        new THREE.BoxGeometry(parcelle.taille * 0.9, 0.05, 0.3),
+        materiauSillon
+      );
+      const offset = (i - (nbSillons - 1) / 2) * (parcelle.taille / nbSillons);
+      sillon.position.set(parcelle.position.x, h + 0.21, parcelle.position.z + offset);
+      groupe.add(sillon);
+    }
+
+    return groupe;
+  }
+
+  _genererRoutes() {
+    // Route principale reliant le village aux tribus (ligne simple au sol).
+    const materiauRoute = new THREE.MeshStandardMaterial({ color: MondeData.palette.route, roughness: 0.95 });
+    const segments = [
+      { de: { x: 0, z: 0 }, a: { x: -46, z: -34 } },
+      { de: { x: 0, z: 0 }, a: { x: 44, z: -38 } },
+      { de: { x: 0, z: 0 }, a: { x: -8, z: 48 } },
+    ];
+    segments.forEach(({ de, a }) => {
+      const dx = a.x - de.x, dz = a.z - de.z;
+      const longueur = Math.sqrt(dx * dx + dz * dz);
+      const angle = Math.atan2(dx, dz);
+      const route = new THREE.Mesh(new THREE.PlaneGeometry(3.2, longueur), materiauRoute);
+      route.rotation.x = -Math.PI / 2;
+      route.rotation.z = -angle;
+      const milieu = { x: (de.x + a.x) / 2, z: (de.z + a.z) / 2 };
+      const h = this.obtenirHauteurSol(milieu.x, milieu.z);
+      route.position.set(milieu.x, h + 0.02, milieu.z);
+      route.receiveShadow = true;
+      this.groupeMonde.add(route);
+    });
+  }
+
+  // Végétation de fond simple (cônes/sphères low-poly façon arbres), dispersée
+  // hors des zones pour donner une ambiance tropicale sans surcharger la scène.
+  _genererVegetationDeFond() {
+    const groupeVegetation = new THREE.Group();
+    groupeVegetation.name = "VegetationDeFond";
+    const materiauTronc = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
+    const materiauFeuillage = new THREE.MeshStandardMaterial({ color: 0x2e6b3a, roughness: 0.9 });
+
+    const nbArbres = 90;
+    let place = 0, tentatives = 0;
+    while (place < nbArbres && tentatives < nbArbres * 6) {
+      tentatives++;
+      const x = THREE.MathUtils.randFloatSpread(380);
+      const z = THREE.MathUtils.randFloatSpread(380);
+
+      // Évite de placer des arbres au centre des zones définies.
+      const dansUneZone = MondeData.zones.some((zone) => {
+        const dx = Math.abs(x - zone.centre.x);
+        const dz = Math.abs(z - zone.centre.z);
+        return dx < zone.taille.largeur * 0.75 && dz < zone.taille.profondeur * 0.75;
+      });
+      if (dansUneZone || z > 120) { continue; }
+
+      const arbre = new THREE.Group();
+      const hauteurTronc = THREE.MathUtils.randFloat(1.2, 2.2);
+      const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, hauteurTronc, 6), materiauTronc);
+      tronc.position.y = hauteurTronc / 2;
+      tronc.castShadow = true;
+      arbre.add(tronc);
+
+      const feuillage = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(THREE.MathUtils.randFloat(0.9, 1.6), 0),
+        materiauFeuillage
+      );
+      feuillage.position.y = hauteurTronc + 0.6;
+      feuillage.castShadow = true;
+      feuillage.scale.y = 1.3; // silhouette évoquant un cocotier/arbre tropical stylisé
+      arbre.add(feuillage);
+
+      const h = this.obtenirHauteurSol(x, z);
+      arbre.position.set(x, h, z);
+      arbre.rotation.y = Math.random() * Math.PI * 2;
+      groupeVegetation.add(arbre);
+      place++;
+    }
+    this.groupeMonde.add(groupeVegetation);
+  }
+
+  // Étiquette de zone : sprite avec texte généré via canvas 2D (aucune
+  // dépendance externe à une police/lib de texte).
+  _genererEtiquette(texte, position, hauteur) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512; canvas.height = 96;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "rgba(20,30,20,0.0)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "bold 44px Segoe UI, Arial";
+    ctx.fillStyle = "#1c2a1c";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // Léger contour pour la lisibilité sur ciel/sol clairs.
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.strokeText(texte, canvas.width / 2, canvas.height / 2);
+    ctx.fillText(texte, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const materiau = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(materiau);
+    sprite.scale.set(14, 2.6, 1);
+    sprite.position.set(position.x, hauteur, position.z);
+    return sprite;
+  }
+}
+
+
+/* ==========================================================================
+   4. PERSONNAGE JOUABLE — Personnage
+   ==========================================================================
+   Silhouette low-poly générique (capsule + tête), déplacement au clavier,
+   orientation vers la direction de marche. API stable (`position`,
+   `update(dt)`) pour permettre un remplacement visuel futur sans impacter
+   la logique de déplacement ni la caméra.
+   ========================================================================== */
+
+class Personnage {
+  constructor(scene, obtenirHauteurSol) {
+    this.obtenirHauteurSol = obtenirHauteurSol;
+    this.vitesseDeplacement = 9; // unités/seconde
+    this.vitesseRotation = 10;
+
+    this.groupe = new THREE.Group();
+    this.groupe.name = "Personnage";
+
+    // Corps : capsule stylisée (silhouette neutre, sans trait culturel/visage).
+    const materiauCorps = new THREE.MeshStandardMaterial({ color: 0x3a6ea8, roughness: 0.6 });
+    const corps = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.0, 4, 10), materiauCorps);
+    corps.position.y = 1.0;
+    corps.castShadow = true;
+    this.groupe.add(corps);
+
+    const materiauTete = new THREE.MeshStandardMaterial({ color: 0xd8a878, roughness: 0.7 });
+    const tete = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), materiauTete);
+    tete.position.y = 1.85;
+    tete.castShadow = true;
+    this.groupe.add(tete);
+
+    // Petit indicateur de direction (pour vérifier visuellement l'orientation).
+    const indicateur = new THREE.Mesh(
+      new THREE.ConeGeometry(0.12, 0.3, 6),
+      new THREE.MeshStandardMaterial({ color: 0xe8b84b })
+    );
+    indicateur.position.set(0, 1.0, 0.55);
+    indicateur.rotation.x = Math.PI / 2;
+    this.groupe.add(indicateur);
+
+    this.groupe.position.set(2, 0, 10);
+    scene.add(this.groupe);
+
+    this._direction = new THREE.Vector3();
+    this._vitesseActuelle = new THREE.Vector3();
+
+    this.touches = {};
+    window.addEventListener("keydown", (e) => { this.touches[e.key.toLowerCase()] = true; });
+    window.addEventListener("keyup", (e) => { this.touches[e.key.toLowerCase()] = false; });
+  }
+
+  get position() { return this.groupe.position; }
+
+  update(dt) {
+    const avance = (this.touches["w"] || this.touches["arrowup"]) ? 1 : 0;
+    const recule = (this.touches["s"] || this.touches["arrowdown"]) ? 1 : 0;
+    const gauche = (this.touches["a"] || this.touches["arrowleft"]) ? 1 : 0;
+    const droite = (this.touches["d"] || this.touches["arrowright"]) ? 1 : 0;
+
+    this._direction.set(droite - gauche, 0, recule - avance);
+    const enMouvement = this._direction.lengthSq() > 0;
+    if (enMouvement) this._direction.normalize();
+
+    const vitesseVoulue = this._direction.clone().multiplyScalar(this.vitesseDeplacement);
+    this._vitesseActuelle.lerp(vitesseVoulue, Math.min(1, dt * 8));
+
+    const deplacement = this._vitesseActuelle.clone().multiplyScalar(dt);
+    const limite = 205; // reste dans les limites du sol généré
+
+    const nouvelleX = THREE.MathUtils.clamp(this.groupe.position.x + deplacement.x, -limite, limite);
+    const nouvelleZ = THREE.MathUtils.clamp(this.groupe.position.z + deplacement.z, -limite, limite);
+    this.groupe.position.x = nouvelleX;
+    this.groupe.position.z = nouvelleZ;
+    this.groupe.position.y = this.obtenirHauteurSol(nouvelleX, nouvelleZ);
+
+    if (enMouvement) {
+      const angleCible = Math.atan2(this._direction.x, this._direction.z);
+      // Interpolation angulaire courte (évite les sauts à ±PI).
+      let delta = angleCible - this.groupe.rotation.y;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      this.groupe.rotation.y += delta * Math.min(1, dt * this.vitesseRotation);
+    }
+  }
+}
+
+
+/* ==========================================================================
+   5. BOUCLE DE JEU — main()
+   ==========================================================================
+   Assemble les modules précédents, gère la caméra suiveuse (orbitale
+   autour du personnage via OrbitControls), détecte la zone courante pour
+   le HUD, et lance la boucle de rendu.
+   ========================================================================== */
+
+function main() {
+  const sceneManager = new SceneManager(document.body);
+  const terrain = new TerrainBuilder(sceneManager.scene);
+  const personnage = new Personnage(sceneManager.scene, terrain.obtenirHauteurSol);
+
+  // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
+  // personnage, ce qui permet à la fois le suivi automatique et le contrôle
+  // manuel (orbite/zoom) par l'utilisateur.
+  const controles = new OrbitControls(sceneManager.camera, sceneManager.renderer.domElement);
+  controles.enableDamping = true;
+  controles.dampingFactor = 0.08;
+  controles.minDistance = 6;
+  controles.maxDistance = 40;
+  controles.maxPolarAngle = Math.PI * 0.49; // évite de passer sous le sol
+  controles.target.copy(personnage.position).add(new THREE.Vector3(0, 1.4, 0));
+
+  const decalageCameraInitial = new THREE.Vector3(6, 9, 12);
+  sceneManager.camera.position.copy(personnage.position).add(decalageCameraInitial);
+
+  const hudZoneNom = document.getElementById("hud-zone-nom");
+  const hudZoneFlottant = document.getElementById("hud-zone");
+  let zoneActuelleId = null;
+
+  function detecterZoneCourante() {
+    const pos = personnage.position;
+    const zoneTrouvee = MondeData.zones.find((zone) => {
+      const dx = Math.abs(pos.x - zone.centre.x);
+      const dz = Math.abs(pos.z - zone.centre.z);
+      return dx < zone.taille.largeur / 2 && dz < zone.taille.profondeur / 2;
+    });
+    const nouvelId = zoneTrouvee ? zoneTrouvee.id : null;
+    if (nouvelId !== zoneActuelleId) {
+      zoneActuelleId = nouvelId;
+      const nom = zoneTrouvee ? zoneTrouvee.nom : "En chemin";
+      hudZoneNom.textContent = nom;
+      hudZoneFlottant.textContent = nom;
+      hudZoneFlottant.classList.toggle("visible", !!zoneTrouvee);
+    }
+  }
+
+  // --- Vérification post-chargement : masque l'écran de chargement --------
+  const ecranChargement = document.getElementById("ui-chargement");
+  const barreInterne = document.getElementById("barre-interne");
+  requestAnimationFrame(() => {
+    barreInterne.style.width = "100%";
+    setTimeout(() => {
+      ecranChargement.style.opacity = "0";
+      setTimeout(() => (ecranChargement.style.display = "none"), 650);
+    }, 300);
+  });
+
+  // --- Avertissement de performance simple (nombre de triangles élevé) ----
+  const infosRenderer = sceneManager.renderer.info;
+
+  function boucleAnimation() {
+    const dt = Math.min(sceneManager.horloge.getDelta(), 0.05);
+
+    personnage.update(dt);
+
+    // La cible des OrbitControls suit le personnage ; la position de la
+    // caméra reste gérée par l'utilisateur (orbite/zoom), sauf déplacement
+    // du personnage qui translate l'ensemble pour garder le cadrage.
+    const decalageCamera = sceneManager.camera.position.clone().sub(controles.target);
+    controles.target.lerp(personnage.position.clone().add(new THREE.Vector3(0, 1.4, 0)), Math.min(1, dt * 4));
+    sceneManager.camera.position.copy(controles.target).add(decalageCamera);
+
+    controles.update();
+
+    detecterZoneCourante();
+
+    sceneManager.renderer.render(sceneManager.scene, sceneManager.camera);
+    requestAnimationFrame(boucleAnimation);
+  }
+
+  boucleAnimation();
+
+  // Rapport de vérification simple dans la console (cf. section VÉRIFICATION
+  // du cahier des charges) : nombre de triangles générés, pour repérer tout
+  // problème de performance avant d'empiler les modules suivants.
+  setTimeout(() => {
+    console.log(
+      `[Terre du Pacifique] Scène chargée — ${infosRenderer.render.triangles} triangles, ` +
+      `${MondeData.zones.length} zones, ${MondeData.cultures.length} cultures au catalogue.`
+    );
+    const seuilAvertissement = 400000;
+    if (infosRenderer.render.triangles > seuilAvertissement) {
+      const bloc = document.getElementById("avertissement");
+      bloc.style.display = "block";
+      bloc.textContent =
+        "Avertissement : la scène dépasse le seuil de complexité recommandé " +
+        "pour une machine standard. Envisager de réduire la végétation de fond.";
+    }
+  }, 500);
+}
+
+main();
+</script>
+</body>
+</html>
