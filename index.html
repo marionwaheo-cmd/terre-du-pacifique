@@ -220,6 +220,29 @@ traduite en géométries/matériaux Three.js originaux.
   - OrbitControls gère nativement le reste de l'écran au tactile (un doigt
     glissé = orbite, deux doigts = zoom), sans conflit avec le joystick
     puisque celui-ci capture son propre pointeur (`setPointerCapture`).
+
+----------------------------------------------------------------------------
+ MODULE 9 — FAUNE SAUVAGE & CHASSE DE SUBSISTANCE
+----------------------------------------------------------------------------
+  - `GestionFaune` fait apparaître des sangliers (silhouette générique)
+    autour des tribus chaque nuit, qui errent puis se dispersent à l'aube.
+    Le sanglier est une espèce commune en Nouvelle-Calédonie, chassée
+    légalement car elle endommage les cultures — aucune ambiguïté éthique
+    ni dramatisation : c'est une activité de subsistance ordinaire.
+  - Une armurerie (village) vend un fusil de chasse générique (achat
+    unique). La nuit, s'approcher d'un sanglier propose de le chasser (E)
+    si le joueur est armé, sinon un simple avertissement s'affiche.
+  - La viande crue obtenue doit être grillée sur un foyer allumé (E),
+    puis offerte à une tribu (E, près d'un habitant) pour renforcer son
+    revenu communautaire — boucle complète "chasser → cuisiner → nourrir
+    la tribu", qui prolonge le module 4 (population) sans le modifier.
+  - Architecture pensée pour un futur module "chasse saisonnière
+    réglementée" (cerf, notou, roussette) : `GestionFaune` peut gérer
+    plusieurs espèces avec des règles d'apparition différentes sans
+    changement structurel. Un tel module devra s'appuyer sur les règles
+    de chasse réelles des provinces néo-calédoniennes (à vérifier auprès
+    des autorités compétentes), jamais sur une reconstitution approximative
+    présentée comme référence légale.
 ============================================================================
 -->
 
@@ -728,6 +751,8 @@ const MondeData = {
           commerce: { nom: "Épicerie du village", vend: ["outils", "semences", "engrais"], inventaire: {}, caisse: 0 } },
         { id: "ecole_future", type: "emplacement_reserve", position: { x: -14, z: 6 },
           commerce: null, note: "Emplacement réservé — construction d'école (module population)" },
+        { id: "armurerie", type: "commerce", position: { x: 15, z: -2 },
+          commerce: { nom: "Armurerie du village", vend: ["fusil_chasse"], inventaire: {}, caisse: 0 } },
       ],
       // Lieu de rassemblement communautaire : le joueur peut y "sonner la
       // conque" pour réunir les habitants (affaires courantes, conflits de
@@ -884,6 +909,17 @@ const MondeData = {
   // Engrais : accélère la croissance de la culture en place (réduit le
   // temps restant). Acheté à l'épicerie du village.
   engrais: { prixAchat: 15, reductionTemps: 0.3 },
+
+  // --- FAUNE SAUVAGE & CHASSE (module 9) -----------------------------------
+  // Le sanglier est une espèce commune en Nouvelle-Calédonie où elle cause
+  // des dégâts aux cultures (chasse courante et légale). Un fusil de chasse
+  // générique, acheté à l'armurerie, permet de chasser les sangliers qui
+  // rôdent la nuit, pour nourrir sa tribu après cuisson au foyer.
+  armement: { fusil_chasse: { nom: "Fusil de chasse", prixAchat: 150 } },
+
+  // Icônes des objets d'inventaire qui ne sont pas des cultures (évite de
+  // dupliquer le catalogue de cultures pour de simples pictogrammes HUD).
+  iconesObjets: { viande_sanglier: "🥩", viande_grillee: "🍖" },
 
   // --- ÉVÉNEMENTS / CONFLITS (module 5) -----------------------------------
   // Rempli à l'exécution par `GestionConflits`. Volontairement limité à des
@@ -2674,6 +2710,7 @@ class GestionSauvegarde {
         argent: joueur.argent,
         engrais: joueur.engrais,
         inventaire: { ...joueur.inventaire },
+        aUneArme: joueur.aUneArme,
       },
       personnage: {
         x: personnage.position.x,
@@ -2725,6 +2762,7 @@ class GestionSauvegarde {
     if (sauvegarde.joueur) {
       joueur.argent = sauvegarde.joueur.argent ?? joueur.argent;
       joueur.engrais = sauvegarde.joueur.engrais ?? joueur.engrais;
+      joueur.aUneArme = sauvegarde.joueur.aUneArme ?? joueur.aUneArme;
       if (sauvegarde.joueur.inventaire) Object.assign(joueur.inventaire, sauvegarde.joueur.inventaire);
     }
 
@@ -2757,6 +2795,137 @@ class GestionSauvegarde {
 
 
 /* ==========================================================================
+   9bis. FAUNE SAUVAGE — construireSanglier / GestionFaune (module 9)
+   ==========================================================================
+   Des sangliers génériques (silhouette low-poly, aucune texture réaliste)
+   apparaissent la nuit autour des tribus et se dispersent à l'aube — le
+   sanglier est une espèce commune en Nouvelle-Calédonie, chassée
+   légalement toute l'année car elle endommage les cultures. Un fusil de
+   chasse (acheté à l'armurerie) permet de les chasser pour nourrir sa
+   tribu, après cuisson au foyer. Point d'extension pour un futur module
+   "chasse saisonnière réglementée" (cerf, notou, roussette) : voir
+   `GestionFaune`, dont l'architecture (peuplement/dispersion par horaire,
+   enregistrement dans `this.animaux`) peut être réutilisée telle quelle.
+   ========================================================================== */
+
+function construireSanglier() {
+  const groupe = new THREE.Group();
+  const materiauCorps = new THREE.MeshStandardMaterial({ color: 0x4a3a2e, roughness: 0.9 });
+
+  const corps = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.5, 4, 8), materiauCorps);
+  corps.rotation.z = Math.PI / 2;
+  corps.position.y = 0.32;
+  corps.castShadow = true;
+  groupe.add(corps);
+
+  const tete = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.36, 8), materiauCorps);
+  tete.rotation.z = Math.PI / 2;
+  tete.position.set(0.52, 0.3, 0);
+  tete.castShadow = true;
+  groupe.add(tete);
+
+  const materiauDefense = new THREE.MeshStandardMaterial({ color: 0xf0ead6 });
+  [-0.07, 0.07].forEach((dz) => {
+    const defense = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1, 6), materiauDefense);
+    defense.rotation.z = Math.PI / 2 - 0.5;
+    defense.position.set(0.66, 0.22, dz);
+    groupe.add(defense);
+  });
+
+  [[-0.16, -0.1], [-0.16, 0.1], [0.16, -0.1], [0.16, 0.1]].forEach(([dx, dz]) => {
+    const patte = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.28, 6), materiauCorps);
+    patte.position.set(dx, 0.14, dz);
+    patte.castShadow = true;
+    groupe.add(patte);
+  });
+
+  const criniere = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x241c14 }));
+  criniere.position.set(0, 0.56, 0);
+  criniere.rotation.x = Math.PI / 2;
+  groupe.add(criniere);
+
+  return groupe;
+}
+
+class GestionFaune {
+  constructor(scene, obtenirHauteurSol, tribus) {
+    this.scene = scene;
+    this.obtenirHauteurSol = obtenirHauteurSol;
+    this.tribus = tribus; // zones de type "tribu" (MondeData.zones filtrées)
+    this.animaux = [];
+    this.actif = false; // peuplé uniquement la nuit
+  }
+
+  _peupler() {
+    this.tribus.forEach((zone) => {
+      const nb = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < nb; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const rayon = Math.max(zone.taille.largeur, zone.taille.profondeur) * 0.55 + 4 + Math.random() * 6;
+        const x = zone.centre.x + Math.cos(angle) * rayon;
+        const z = zone.centre.z + Math.sin(angle) * rayon;
+        const h = this.obtenirHauteurSol(x, z);
+        const groupe = construireSanglier();
+        groupe.position.set(x, h, z);
+        groupe.rotation.y = Math.random() * Math.PI * 2;
+        this.scene.add(groupe);
+        this.animaux.push({ groupe, cible: null, pause: Math.random() * 2 });
+      }
+    });
+  }
+
+  _disperser() {
+    this.animaux.forEach((a) => this.scene.remove(a.groupe));
+    this.animaux = [];
+  }
+
+  update(dt, estNuit) {
+    if (estNuit && !this.actif) { this.actif = true; this._peupler(); }
+    if (!estNuit && this.actif) { this.actif = false; this._disperser(); }
+    if (!this.actif) return;
+
+    this.animaux.forEach((a) => {
+      if (a.pause > 0) { a.pause -= dt; return; }
+      if (!a.cible) {
+        const angle = Math.random() * Math.PI * 2;
+        const rayon = 4 + Math.random() * 6;
+        const x = a.groupe.position.x + Math.cos(angle) * rayon;
+        const z = a.groupe.position.z + Math.sin(angle) * rayon;
+        a.cible = new THREE.Vector3(x, this.obtenirHauteurSol(x, z), z);
+      }
+      const direction = a.cible.clone().sub(a.groupe.position);
+      direction.y = 0;
+      const distance = direction.length();
+      if (distance < 0.3) { a.cible = null; a.pause = 1 + Math.random() * 3; return; }
+      direction.normalize();
+      const vitesse = 2.2;
+      a.groupe.position.x += direction.x * vitesse * dt;
+      a.groupe.position.z += direction.z * vitesse * dt;
+      a.groupe.position.y = this.obtenirHauteurSol(a.groupe.position.x, a.groupe.position.z);
+      const angleCible = Math.atan2(direction.x, direction.z);
+      let delta = angleCible - a.groupe.rotation.y;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      a.groupe.rotation.y += delta * Math.min(1, dt * 5);
+    });
+  }
+
+  leplusProche(position, rayon = 4) {
+    let meilleur = null, meilleureDistance = rayon;
+    this.animaux.forEach((a) => {
+      const d = a.groupe.position.distanceTo(position);
+      if (d <= meilleureDistance) { meilleur = a; meilleureDistance = d; }
+    });
+    return meilleur;
+  }
+
+  chasser(animal) {
+    this.scene.remove(animal.groupe);
+    this.animaux = this.animaux.filter((a) => a !== animal);
+  }
+}
+
+
+/* ==========================================================================
    10. BOUCLE DE JEU — main()
    ==========================================================================
    Assemble les modules précédents, gère la caméra suiveuse (orbitale
@@ -2773,11 +2942,12 @@ function main() {
   const foyers = terrain.foyers.map((f) => new Foyer(f));
 
   // --- État du joueur et gestion des cultures (module 3) ------------------
-  const joueur = { argent: 50, engrais: 1, inventaire: {} };
+  const joueur = { argent: 50, engrais: 1, inventaire: {}, aUneArme: false };
   const cultures = new GestionCultures(terrain.parcelles, joueur);
   const population = new GestionPopulation(terrain, joueur);
   const conflits = new GestionConflits(terrain);
   const effets = new EffetsSonores();
+  const faune = new GestionFaune(sceneManager.scene, terrain.obtenirHauteurSol, population.tribus);
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -2842,16 +3012,58 @@ function main() {
     const pos = personnage.position;
 
     // Foyer le plus proche, la nuit uniquement (de jour, rien à allumer).
+    // Priorité à la cuisson si le joueur a de la viande crue et le feu est
+    // déjà allumé (module 9).
     if (sceneManager.estNuit) {
       for (const foyer of foyers) {
         if (foyer.position.distanceTo(pos) <= foyer.rayonInteraction) {
-          cibleCourante = {
-            libelle: foyer.estAllume
-              ? "E : éteindre le foyer"
-              : "E : allumer le foyer (éloigner les mauvais esprits de la nuit)",
-            action: () => (foyer.estAllume ? foyer.eteindre() : foyer.allumer()),
-          };
+          if (foyer.estAllume && (joueur.inventaire.viande_sanglier || 0) > 0) {
+            cibleCourante = {
+              libelle: "E : faire griller la viande de sanglier",
+              action: () => {
+                joueur.inventaire.viande_sanglier -= 1;
+                joueur.inventaire.viande_grillee = (joueur.inventaire.viande_grillee || 0) + 1;
+                afficherMessage("Viande grillée 🍖 — prête à nourrir la tribu");
+                effets.jouerSucces();
+                mettreAJourHudEconomie();
+                sauvegarde.sauvegarder();
+              },
+            };
+          } else {
+            cibleCourante = {
+              libelle: foyer.estAllume
+                ? "E : éteindre le foyer"
+                : "E : allumer le foyer (éloigner les mauvais esprits de la nuit)",
+              action: () => (foyer.estAllume ? foyer.eteindre() : foyer.allumer()),
+            };
+          }
           break;
+        }
+      }
+    }
+
+    // Sanglier le plus proche, la nuit uniquement (module 9) : prioritaire
+    // sur les parcelles/commerces, car la situation est "urgente".
+    if (!cibleCourante && sceneManager.estNuit) {
+      const animal = faune.leplusProche(pos);
+      if (animal) {
+        if (joueur.aUneArme) {
+          cibleCourante = {
+            libelle: "E : chasser le sanglier (fusil de chasse)",
+            action: () => {
+              faune.chasser(animal);
+              joueur.inventaire.viande_sanglier = (joueur.inventaire.viande_sanglier || 0) + 1;
+              afficherMessage("Sanglier chassé : 🥩 viande de sanglier (à faire griller sur un foyer)");
+              effets.jouerRecolte();
+              mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
+            },
+          };
+        } else {
+          cibleCourante = {
+            libelle: "⚠️ Un sanglier rôde — une arme de chasse serait utile (armurerie du village)",
+            action: () => {},
+          };
         }
       }
     }
@@ -2913,6 +3125,20 @@ function main() {
               if (reussi) sauvegarde.sauvegarder();
             },
           };
+        } else if (c.data.vend?.includes("fusil_chasse") && !joueur.aUneArme) {
+          const prix = MondeData.armement.fusil_chasse.prixAchat;
+          cibleCourante = {
+            libelle: `E : acheter un fusil de chasse (${prix} pièces) à ${c.data.nom}`,
+            action: () => {
+              if (joueur.argent < prix) { afficherMessage("Pas assez d'argent"); effets.jouerErreur(); return; }
+              joueur.argent -= prix;
+              joueur.aUneArme = true;
+              afficherMessage("Fusil de chasse acheté — chassez les sangliers la nuit");
+              effets.jouerSucces();
+              mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
+            },
+          };
         }
         if (cibleCourante) break;
       }
@@ -2961,16 +3187,32 @@ function main() {
       }
     }
 
-    // Habitants (PNJ) : simple salutation, point d'ancrage pour un futur
-    // module de dialogue (jamais de conflit ou de sujet dramatique ici).
+    // Habitants (PNJ) : offrir de la viande grillée (module 9) si le joueur
+    // en a, sinon simple salutation — point d'ancrage pour un futur module
+    // de dialogue (jamais de conflit ou de sujet dramatique ici).
     if (!cibleCourante) {
       for (const pnj of terrain.pnjs) {
         if (pnj.groupe.position.distanceTo(pos) <= 2.2) {
           const estChef = pnj.data.role === "chef_tribu";
-          cibleCourante = {
-            libelle: "E : saluer",
-            action: () => afficherMessage(estChef ? "Le chef de tribu vous salue." : "Un habitant vous salue."),
-          };
+          if ((joueur.inventaire.viande_grillee || 0) > 0) {
+            cibleCourante = {
+              libelle: "E : offrir de la nourriture à la tribu (🍖)",
+              action: () => {
+                joueur.inventaire.viande_grillee -= 1;
+                const tribu = population.tribus.find((t) => t.id === pnj.zoneId);
+                if (tribu) tribu.revenuMenage += 15;
+                afficherMessage("La tribu vous remercie pour cette nourriture.");
+                effets.jouerSucces();
+                mettreAJourHudEconomie();
+                sauvegarde.sauvegarder();
+              },
+            };
+          } else {
+            cibleCourante = {
+              libelle: "E : saluer",
+              action: () => afficherMessage(estChef ? "Le chef de tribu vous salue." : "Un habitant vous salue."),
+            };
+          }
           break;
         }
       }
@@ -3141,10 +3383,11 @@ function main() {
   const hudArgent = document.getElementById("hud-argent");
   const hudInventaire = document.getElementById("hud-inventaire");
   function mettreAJourHudEconomie() {
-    hudArgent.textContent = `💰 ${joueur.argent} · 🧪 ${joueur.engrais} · 👥 ${Math.floor(population.populationTotale())}`;
+    hudArgent.textContent = `💰 ${joueur.argent} · 🧪 ${joueur.engrais} · 👥 ${Math.floor(population.populationTotale())}` +
+      (joueur.aUneArme ? " · 🔫" : "");
     const objets = Object.entries(joueur.inventaire).filter(([, q]) => q > 0);
     hudInventaire.textContent = objets.length
-      ? objets.map(([id, q]) => `${MondeData.cultures.find((c) => c.id === id)?.icone || "•"} ${q}`).join("  ")
+      ? objets.map(([id, q]) => `${MondeData.cultures.find((c) => c.id === id)?.icone || MondeData.iconesObjets[id] || "•"} ${q}`).join("  ")
       : "Inventaire vide";
   }
   mettreAJourHudEconomie();
@@ -3407,6 +3650,7 @@ function main() {
     cultures.update(sceneManager.tempsJeuTotal);
     population.update(dt);
     conflits.update(dt, sceneManager.scene);
+    faune.update(dt, sceneManager.estNuit);
     if (sceneManager.jourJeu !== dernierJourTraite) {
       dernierJourTraite = sceneManager.jourJeu;
       population.nouveauJour();

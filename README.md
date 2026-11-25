@@ -109,6 +109,19 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
 - La caméra reste pilotable au tactile nativement (un doigt = orbite,
   deux doigts = zoom), sans conflit avec le joystick.
 
+**Module 9 — faune sauvage & chasse de subsistance**
+- Des sangliers rôdent la nuit autour des tribus, puis se dispersent à
+  l'aube.
+- Une armurerie au village vend un fusil de chasse (achat unique).
+- La nuit, s'approcher d'un sanglier permet de le chasser (**E**) si on
+  est armé.
+- La viande crue obtenue doit être grillée sur un foyer allumé (**E**),
+  puis offerte à une tribu (**E**, près d'un habitant) pour renforcer son
+  revenu communautaire.
+- Le sanglier est une espèce commune en Nouvelle-Calédonie, chassée
+  légalement toute l'année car elle endommage les cultures : aucune
+  dramatisation, simple activité de subsistance.
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 
