@@ -86,6 +86,16 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   issue dramatique, aucun sujet politique — conformément au cahier des
   charges du projet.
 
+**Module 6 — sauvegarde**
+- Progression sauvegardée automatiquement dans le navigateur
+  (`localStorage`, rien n'est envoyé où que ce soit) : argent, inventaire,
+  engrais, cultures en cours, population/revenu des tribus, école
+  construite, position et apparence du personnage, horloge de jeu.
+- Sauvegarde toutes les 20 secondes, à chaque action clé, et à la
+  fermeture de l'onglet. Rechargée automatiquement à l'ouverture.
+- Bouton 🗑️ (en haut à droite) pour effacer la sauvegarde et recommencer
+  une nouvelle partie.
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 

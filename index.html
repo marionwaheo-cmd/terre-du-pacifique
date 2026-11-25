@@ -178,6 +178,23 @@ traduite en géométries/matériaux Three.js originaux.
     aucune issue dramatique, aucun sujet politique — conformément au
     cahier des charges. Prêt à être enrichi (conséquences variées, relations
     entre habitants, nouveaux types de différends) sans changer l'architecture.
+
+----------------------------------------------------------------------------
+ MODULE 6 — SAUVEGARDE
+----------------------------------------------------------------------------
+  - `GestionSauvegarde` persiste la progression dans le `localStorage` du
+    navigateur (rien n'est envoyé où que ce soit) : argent, inventaire,
+    engrais, cultures en cours, population/revenu de chaque tribu, école
+    construite, position et apparence du personnage, horloge de jeu.
+  - Sauvegarde automatique toutes les 20 secondes, à chaque action clé
+    (récolte, vente, achat, plantation, construction, changement de tenue)
+    et à la fermeture de l'onglet. Chargée avant le premier rendu.
+  - La carte reste entièrement régénérée depuis `MondeData` à chaque
+    chargement : une sauvegarde ne contient que l'état mutable, donc une
+    évolution future de `MondeData` ne la casse pas (champs inconnus
+    ignorés). Les différends de voisinage en cours ne sont volontairement
+    pas restaurés (simplification assumée).
+  - Bouton 🗑️ (en haut à droite) pour effacer la sauvegarde et recommencer.
 ============================================================================
 -->
 
@@ -297,7 +314,7 @@ traduite en géométries/matériaux Three.js originaux.
   #hud-interaction.visible { opacity: 1; }
 
   /* --- Panneau de personnalisation (module 2) ------------------------- */
-  #bouton-tenue, #bouton-musique {
+  #bouton-tenue, #bouton-musique, #bouton-reinitialiser {
     position: fixed;
     top: 12px;
     right: 12px;
@@ -312,6 +329,7 @@ traduite en géométries/matériaux Three.js originaux.
   }
   #bouton-musique { right: 118px; }
   #bouton-musique.actif { border-color: #6fcf97; }
+  #bouton-reinitialiser { right: 226px; padding: 8px 12px; }
   #panneau-tenue {
     position: fixed;
     top: 56px;
@@ -456,6 +474,7 @@ traduite en géométries/matériaux Three.js originaux.
 
 <button id="bouton-musique" title="Activer/couper la musique d'ambiance">🎵 Musique</button>
 <button id="bouton-tenue" title="Choisir la tenue (touche I)">👕 Tenue</button>
+<button id="bouton-reinitialiser" title="Effacer la sauvegarde et recommencer">🗑️</button>
 <div id="panneau-tenue">
   <h3>Apparence</h3>
   <div class="ligne-genre">
@@ -2425,7 +2444,122 @@ class GestionConflits {
 
 
 /* ==========================================================================
-   9. BOUCLE DE JEU — main()
+   9. SAUVEGARDE — GestionSauvegarde (module 6)
+   ==========================================================================
+   Persiste la progression dans le `localStorage` du navigateur : rien n'est
+   envoyé où que ce soit, tout reste sur la machine du joueur. Ne sauvegarde
+   que l'état MUTABLE (argent, inventaire, cultures en cours, population,
+   école construite, tenue, position, horloge de jeu) — la carte elle-même
+   reste entièrement régénérée depuis `MondeData` à chaque chargement, donc
+   une évolution future de `MondeData` ne casse pas les sauvegardes
+   existantes (les champs inconnus sont simplement ignorés).
+   Simplification assumée : les différends de voisinage en cours ne sont
+   pas restaurés (ils sont clos silencieusement au chargement), pour éviter
+   d'avoir à recréer leurs icônes et références PNJ de façon fiable.
+   ========================================================================== */
+
+const CLE_SAUVEGARDE = "terre_du_pacifique_sauvegarde_v1";
+
+class GestionSauvegarde {
+  constructor(contexte) {
+    this.contexte = contexte; // { sceneManager, joueur, personnage, terrain, population, cultures }
+  }
+
+  capturer() {
+    const { sceneManager, joueur, personnage, terrain, population } = this.contexte;
+    return {
+      version: 1,
+      horodatage: Date.now(),
+      tempsJeu: sceneManager.tempsJeu,
+      jourJeu: sceneManager.jourJeu,
+      joueur: {
+        argent: joueur.argent,
+        engrais: joueur.engrais,
+        inventaire: { ...joueur.inventaire },
+      },
+      personnage: {
+        x: personnage.position.x,
+        z: personnage.position.z,
+        genre: personnage.genre,
+        indexTenue: personnage.indexTenue,
+        indexPeau: personnage.indexPeau,
+      },
+      tribus: population.tribus.map((t) => ({
+        id: t.id, population: t.population, revenuMenage: t.revenuMenage,
+      })),
+      parcelles: terrain.parcelles
+        .filter((p) => p.data.cultureActuelle)
+        .map((p) => ({ id: p.id, cultureActuelle: p.data.cultureActuelle })),
+      ecoleConstruite: population.ecoleConstruite(),
+    };
+  }
+
+  sauvegarder() {
+    try {
+      localStorage.setItem(CLE_SAUVEGARDE, JSON.stringify(this.capturer()));
+    } catch (erreur) {
+      console.warn("[Terre du Pacifique] Sauvegarde impossible :", erreur);
+    }
+  }
+
+  charger() {
+    try {
+      const brut = localStorage.getItem(CLE_SAUVEGARDE);
+      return brut ? JSON.parse(brut) : null;
+    } catch (erreur) {
+      console.warn("[Terre du Pacifique] Sauvegarde illisible, ignorée :", erreur);
+      return null;
+    }
+  }
+
+  effacer() {
+    try { localStorage.removeItem(CLE_SAUVEGARDE); } catch { /* navigation privée : rien à faire */ }
+  }
+
+  // Applique une sauvegarde chargée sur le monde fraîchement généré.
+  appliquer(sauvegarde) {
+    const { sceneManager, joueur, personnage, terrain, population } = this.contexte;
+    if (!sauvegarde || sauvegarde.version !== 1) return;
+
+    if (typeof sauvegarde.tempsJeu === "number") sceneManager.tempsJeu = sauvegarde.tempsJeu;
+    if (typeof sauvegarde.jourJeu === "number") sceneManager.jourJeu = sauvegarde.jourJeu;
+
+    if (sauvegarde.joueur) {
+      joueur.argent = sauvegarde.joueur.argent ?? joueur.argent;
+      joueur.engrais = sauvegarde.joueur.engrais ?? joueur.engrais;
+      if (sauvegarde.joueur.inventaire) Object.assign(joueur.inventaire, sauvegarde.joueur.inventaire);
+    }
+
+    if (sauvegarde.personnage) {
+      const p = sauvegarde.personnage;
+      if (typeof p.x === "number" && typeof p.z === "number") {
+        personnage.groupe.position.x = p.x;
+        personnage.groupe.position.z = p.z;
+      }
+      if (p.genre) personnage.definirTeintePeau(p.indexPeau ?? personnage.indexPeau);
+      if (p.genre) personnage.definirTenue(p.genre, p.indexTenue ?? 0);
+    }
+
+    (sauvegarde.tribus || []).forEach((sauvegardeTribu) => {
+      const tribu = population.tribus.find((t) => t.id === sauvegardeTribu.id);
+      if (tribu) {
+        tribu.population = sauvegardeTribu.population;
+        tribu.revenuMenage = sauvegardeTribu.revenuMenage;
+      }
+    });
+
+    (sauvegarde.parcelles || []).forEach((sauvegardeParcelle) => {
+      const parcelle = terrain.parcelles.find((p) => p.id === sauvegardeParcelle.id);
+      if (parcelle) parcelle.data.cultureActuelle = sauvegardeParcelle.cultureActuelle;
+    });
+
+    if (sauvegarde.ecoleConstruite) population.construireEcole();
+  }
+}
+
+
+/* ==========================================================================
+   10. BOUCLE DE JEU — main()
    ==========================================================================
    Assemble les modules précédents, gère la caméra suiveuse (orbitale
    autour du personnage via OrbitControls), détecte la zone courante pour
@@ -2538,13 +2672,14 @@ function main() {
               const recolte = cultures.recolter(p);
               afficherMessage(`Récolté : ${recolte.icone} ${recolte.nom}`);
               mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
             },
           };
         } else if (joueur.engrais > 0) {
           const pourcent = Math.round(p._progressionCourante * 100);
           cibleCourante = {
             libelle: `E : mettre de l'engrais (croissance ${pourcent}%, engrais : ${joueur.engrais})`,
-            action: () => { cultures.appliquerEngrais(p); mettreAJourHudEconomie(); },
+            action: () => { cultures.appliquerEngrais(p); mettreAJourHudEconomie(); sauvegarde.sauvegarder(); },
           };
         }
         if (cibleCourante) break;
@@ -2563,6 +2698,7 @@ function main() {
               if (nbVendu > 0) population.ajouterRevenuCommunautaire(total);
               afficherMessage(nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment");
               mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
             },
           };
         } else if (c.data.vend?.includes("engrais")) {
@@ -2572,6 +2708,7 @@ function main() {
               const reussi = cultures.acheterEngrais(c);
               afficherMessage(reussi ? "Engrais acheté" : "Pas assez d'argent");
               mettreAJourHudEconomie();
+              if (reussi) sauvegarde.sauvegarder();
             },
           };
         }
@@ -2595,6 +2732,7 @@ function main() {
               population.construireEcole();
               afficherMessage("École construite ! La communauté grandit.");
               mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
             },
           };
         } else {
@@ -2677,6 +2815,7 @@ function main() {
         cultures.planter(parcelleCiblee, culture.id, sceneManager.tempsJeuTotal);
         panneauPlantation.classList.remove("visible");
         afficherMessage(`Planté : ${culture.icone} ${culture.nom}`);
+        sauvegarde.sauvegarder();
       });
       grillePlantation.appendChild(bouton);
     });
@@ -2869,6 +3008,7 @@ function main() {
       swatch.addEventListener("click", () => {
         personnage.definirTenue(personnage.genre, i);
         construireSwatchesTenues();
+        sauvegarde.sauvegarder();
       });
       grilleTenues.appendChild(swatch);
     });
@@ -2883,6 +3023,7 @@ function main() {
       swatch.addEventListener("click", () => {
         personnage.definirTeintePeau(i);
         construireSwatchesPeau();
+        sauvegarde.sauvegarder();
       });
       grillePeau.appendChild(swatch);
     });
@@ -2907,11 +3048,13 @@ function main() {
     boutonGenreFemme.classList.add("actif");
     boutonGenreHomme.classList.remove("actif");
     construireSwatchesTenues();
+    sauvegarde.sauvegarder();
   });
   boutonGenreHomme.addEventListener("click", () => {
     personnage.definirTenue("homme", 0);
     boutonGenreHomme.classList.add("actif");
     boutonGenreFemme.classList.remove("actif");
+    sauvegarde.sauvegarder();
     construireSwatchesTenues();
   });
   construireSwatchesTenues();
@@ -2924,6 +3067,25 @@ function main() {
     if (touche === "e" && cibleCourante) cibleCourante.action();
     if (touche === "v") basculerVueAerienne();
     if (touche === "i") basculerPanneauTenue();
+  });
+
+  // --- Sauvegarde (module 6) ----------------------------------------------
+  // Chargée AVANT le premier rendu pour que le joueur retrouve exactement
+  // où il en était (argent, cultures en cours, population, école, tenue…).
+  const sauvegarde = new GestionSauvegarde({ sceneManager, joueur, personnage, terrain, population });
+  sauvegarde.appliquer(sauvegarde.charger());
+  mettreAJourHudEconomie();
+
+  // Sauvegarde automatique périodique + à la fermeture de l'onglet.
+  setInterval(() => sauvegarde.sauvegarder(), 20000);
+  window.addEventListener("beforeunload", () => sauvegarde.sauvegarder());
+
+  const boutonReinitialiser = document.getElementById("bouton-reinitialiser");
+  boutonReinitialiser.addEventListener("click", () => {
+    if (confirm("Effacer la sauvegarde et recommencer une nouvelle partie ?")) {
+      sauvegarde.effacer();
+      location.reload();
+    }
   });
 
   // --- Vérification post-chargement : masque l'écran de chargement --------
