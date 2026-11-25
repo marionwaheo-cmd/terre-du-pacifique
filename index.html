@@ -122,6 +122,21 @@ traduite en géométries/matériaux Three.js originaux.
     (inspirés de tissus imprimés, jamais copiés), pour un personnage
     féminin ou masculin, ainsi qu'une teinte de peau. Aucun visage détaillé
     n'est représenté : silhouettes génériques uniquement.
+
+----------------------------------------------------------------------------
+ MODULE 3 — CULTURES & ÉCONOMIE
+----------------------------------------------------------------------------
+  - `GestionCultures` fait vivre les parcelles de plantation : planter
+    (touche E sur une parcelle vide, choix dans un panneau), croissance
+    datée sur l'horloge de jeu (`SceneManager.jourJeu`/`tempsJeuTotal`),
+    visuel procédural qui évolue par stades (pousse → croissance →
+    maturité), récolte (E) qui alimente l'inventaire du joueur.
+  - Engrais : achetable à l'épicerie (E), réduit le temps de croissance
+    restant d'une parcelle en cours (E sur une parcelle non mûre).
+  - Économie minimale : la coopérative agricole achète toute la récolte
+    compatible au prix du catalogue (E), sans négociation ni stock limité
+    — un futur module pourra enrichir l'offre/demande, les prix variables,
+    etc. sans changer la structure de données.
 ============================================================================
 -->
 
@@ -283,6 +298,36 @@ traduite en géométries/matériaux Three.js originaux.
     border: 2px solid rgba(255,255,255,0.3); box-sizing: border-box;
   }
   .swatch.actif { border-color: var(--couleur-accent); box-shadow: 0 0 0 2px var(--couleur-accent); }
+
+  /* --- Panneau de plantation (module 3) -------------------------------- */
+  #panneau-plantation {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 14px;
+    background: var(--couleur-fond-ui);
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
+    z-index: 25;
+    display: none;
+    max-width: 90vw;
+  }
+  #panneau-plantation.visible { display: block; }
+  #panneau-plantation h3 { margin: 0 0 8px; font-size: 0.85rem; color: var(--couleur-accent); text-align: center; }
+  #grille-plantation { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .choix-culture {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--couleur-accent);
+    background: rgba(255,255,255,0.06);
+    color: var(--couleur-texte);
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .choix-culture:hover { background: var(--couleur-accent); color: #1c2a1c; }
 </style>
 </head>
 <body>
@@ -298,7 +343,8 @@ traduite en géométries/matériaux Three.js originaux.
   <strong>Caméra :</strong> clic-gauche + glisser pour orbiter, molette pour zoomer<br>
   <strong>Vue aérienne :</strong> touche V · <strong>Tenue :</strong> touche I<br>
   <strong>Zone actuelle :</strong> <span id="hud-zone-nom">—</span> ·
-  <strong>Heure :</strong> <span id="hud-heure">—</span>
+  <strong>Heure :</strong> <span id="hud-heure">—</span><br>
+  <span id="hud-argent">💰 0 · 🧪 0</span> · <span id="hud-inventaire">Inventaire vide</span>
 </div>
 
 <div id="hud-zone"></div>
@@ -316,6 +362,11 @@ traduite en géométries/matériaux Three.js originaux.
   <div id="grille-tenues" class="grille-swatches"></div>
   <h3>Teinte de peau</h3>
   <div id="grille-peau" class="grille-swatches"></div>
+</div>
+
+<div id="panneau-plantation">
+  <h3>Choisir une culture</h3>
+  <div id="grille-plantation"></div>
 </div>
 
 <script type="importmap">
@@ -391,7 +442,7 @@ const MondeData = {
         { id: "cooperative_agricole", type: "commerce", position: { x: 6, z: -6 },
           commerce: { nom: "Coopérative agricole", achete: ["igname", "pasteque", "tomate"], inventaire: {}, caisse: 0 } },
         { id: "epicerie", type: "commerce", position: { x: 10, z: 4 },
-          commerce: { nom: "Épicerie du village", vend: ["outils", "semences"], inventaire: {}, caisse: 0 } },
+          commerce: { nom: "Épicerie du village", vend: ["outils", "semences", "engrais"], inventaire: {}, caisse: 0 } },
         { id: "ecole_future", type: "emplacement_reserve", position: { x: -14, z: 6 },
           commerce: null, note: "Emplacement réservé — construction d'école (module population)" },
       ],
@@ -533,15 +584,23 @@ const MondeData = {
     },
   ],
 
-  // --- CULTURES DISPONIBLES (catalogue, module "cultures" à venir) -------
+  // --- CULTURES DISPONIBLES (module 3 — Cultures & Économie) --------------
+  // `couleur` sert uniquement à la représentation visuelle générique du
+  // fruit/tubercule à maturité (forme procédurale, jamais une texture ou
+  // un modèle réaliste copié). `dureeCroissanceJours` est exprimée en
+  // "jours de jeu" (voir `SceneManager.jourJeu`).
   cultures: [
-    { id: "igname",   nom: "Igname",   dureeCroissanceJours: 7, prixVenteBase: 12, zonesCompatibles: ["plantation"] },
-    { id: "pasteque", nom: "Pastèque", dureeCroissanceJours: 5, prixVenteBase: 9,  zonesCompatibles: ["plantation"] },
-    { id: "tomate",   nom: "Tomate",   dureeCroissanceJours: 3, prixVenteBase: 6,  zonesCompatibles: ["plantation"] },
-    { id: "taro",     nom: "Taro",     dureeCroissanceJours: 6, prixVenteBase: 10, zonesCompatibles: ["plantation"] },
-    { id: "manioc",   nom: "Manioc",   dureeCroissanceJours: 8, prixVenteBase: 8,  zonesCompatibles: ["plantation"] },
-    { id: "cafe",     nom: "Café",     dureeCroissanceJours: 14,prixVenteBase: 20, zonesCompatibles: ["plantation"] },
+    { id: "igname",   nom: "Igname",   icone: "🍠", dureeCroissanceJours: 7, prixVenteBase: 12, couleur: 0xd9b36c, zonesCompatibles: ["plantation"] },
+    { id: "pasteque", nom: "Pastèque", icone: "🍉", dureeCroissanceJours: 5, prixVenteBase: 9,  couleur: 0x3a8f3a, zonesCompatibles: ["plantation"] },
+    { id: "tomate",   nom: "Tomate",   icone: "🍅", dureeCroissanceJours: 3, prixVenteBase: 6,  couleur: 0xd13c2c, zonesCompatibles: ["plantation"] },
+    { id: "taro",     nom: "Taro",     icone: "🌱", dureeCroissanceJours: 6, prixVenteBase: 10, couleur: 0x6b4a2b, zonesCompatibles: ["plantation"] },
+    { id: "manioc",   nom: "Manioc",   icone: "🌿", dureeCroissanceJours: 8, prixVenteBase: 8,  couleur: 0xc9a86a, zonesCompatibles: ["plantation"] },
+    { id: "cafe",     nom: "Café",     icone: "☕", dureeCroissanceJours: 14,prixVenteBase: 20, couleur: 0x4a2f1a, zonesCompatibles: ["plantation"] },
   ],
+
+  // Engrais : accélère la croissance de la culture en place (réduit le
+  // temps restant). Acheté à l'épicerie du village.
+  engrais: { prixAchat: 15, reductionTemps: 0.3 },
 
   // --- ÉVÉNEMENTS / CONFLITS ----------------------------------------------
   // Tableau volontairement vide : aucune logique de conflit n'est implémentée
@@ -596,6 +655,9 @@ class SceneManager {
     this.dureeJourSecondes = 180;
     this.tempsJeu = 8; // Démarre en milieu de matinée.
     this.estNuit = false;
+    // Compteur de jours écoulés (module 3 — sert à dater les plantations
+    // et calculer leur progression de croissance).
+    this.jourJeu = 0;
 
     window.addEventListener("resize", () => this._surRedimensionnement());
   }
@@ -690,7 +752,13 @@ class SceneManager {
   // Fait avancer l'horloge de jeu et met à jour ciel/lumière/étoiles en
   // conséquence. Appelé chaque frame depuis la boucle principale.
   mettreAJourCycleJourNuit(dt) {
+    const heureAvant = this.tempsJeu;
     this.tempsJeu = (this.tempsJeu + (dt / this.dureeJourSecondes) * 24) % 24;
+    if (this.tempsJeu < heureAvant) this.jourJeu += 1; // un cycle de 24h s'est écoulé
+
+    // Horodatage continu (jours + fraction de journée), utilisé par
+    // `GestionCultures` pour calculer la progression de croissance.
+    this.tempsJeuTotal = this.jourJeu + this.tempsJeu / 24;
 
     // facteurNuit : 0 en plein jour (6h-18h), monte à 1 en pleine nuit,
     // avec une transition douce au crépuscule/à l'aube (±1h30).
@@ -772,6 +840,8 @@ class TerrainBuilder {
     this.foyers = [];              // instances de Foyer (voir classe dédiée)
     this.airesRassemblement = [];  // { position: Vector3, zoneId }
     this.villageoisDecor = [];     // silhouettes génériques pour l'assemblée
+    this.parcelles = [];           // { id, data, position, groupePousse, zoneId } — module 3
+    this.commerces = [];           // { id, data (commerce), position, zoneId } — module 3
 
     this._genererSolBase();
     MondeData.zones.forEach((zone) => this._genererZone(zone));
@@ -929,6 +999,15 @@ class TerrainBuilder {
     }
 
     groupe.position.set(batiment.position.x, h, batiment.position.z);
+
+    if (batiment.commerce) {
+      this.commerces.push({
+        id: batiment.id,
+        data: batiment.commerce,
+        position: new THREE.Vector3(batiment.position.x, h, batiment.position.z),
+        zoneId: zone.id,
+      });
+    }
     return groupe;
   }
 
@@ -1223,6 +1302,21 @@ class TerrainBuilder {
       sillon.position.set(parcelle.position.x, h + 0.21, parcelle.position.z + offset);
       groupe.add(sillon);
     }
+
+    // Sous-groupe vide destiné à recevoir le visuel de la culture en cours
+    // (pousse → croissance → maturité), construit et mis à jour par
+    // `GestionCultures` (module 3), jamais directement par `TerrainBuilder`.
+    const groupePousse = new THREE.Group();
+    groupePousse.position.set(parcelle.position.x, h + 0.21, parcelle.position.z);
+    groupe.add(groupePousse);
+
+    this.parcelles.push({
+      id: parcelle.id,
+      data: parcelle, // référence vivante : les mutations sont partagées
+      position: new THREE.Vector3(parcelle.position.x, h, parcelle.position.z),
+      groupePousse,
+      zoneId: zone.id,
+    });
 
     return groupe;
   }
@@ -1750,7 +1844,151 @@ class AmbianceSonore {
 
 
 /* ==========================================================================
-   6. BOUCLE DE JEU — main()
+   6. CULTURES & ÉCONOMIE — GestionCultures (module 3)
+   ==========================================================================
+   Gère le cycle plantation → croissance → récolte sur les parcelles de
+   `TerrainBuilder.parcelles`, ainsi que l'inventaire et l'argent du joueur.
+   Les visuels de pousse sont procéduraux (cônes/sphères génériques colorés
+   par culture) et reconstruits uniquement au changement de stade, pour
+   limiter le coût de rendu.
+   ========================================================================== */
+
+const STADE_VIDE = 0, STADE_POUSSE = 1, STADE_CROISSANCE = 2, STADE_MATURE = 3;
+
+class GestionCultures {
+  constructor(parcelles, joueur) {
+    this.parcelles = parcelles; // registre venant de TerrainBuilder
+    this.joueur = joueur;
+  }
+
+  // Progression (0 à 1) de la culture d'une parcelle, selon l'horodatage
+  // continu du jeu (`sceneManager.tempsJeuTotal`, en jours).
+  _progression(parcelleEntree, tempsJeuTotal) {
+    const c = parcelleEntree.data.cultureActuelle;
+    if (!c) return 0;
+    const duree = c.dureeJours * (1 - (c.bonusEngrais || 0));
+    return THREE.MathUtils.clamp((tempsJeuTotal - c.datePlantation) / duree, 0, 1);
+  }
+
+  _stade(progression, aCulture) {
+    if (!aCulture) return STADE_VIDE;
+    if (progression >= 1) return STADE_MATURE;
+    if (progression < 0.25) return STADE_POUSSE;
+    return STADE_CROISSANCE;
+  }
+
+  // Reconstruit le visuel d'une parcelle UNIQUEMENT si son stade a changé
+  // depuis le dernier appel (évite de regénérer des géométries chaque frame).
+  update(tempsJeuTotal) {
+    this.parcelles.forEach((p) => {
+      const progression = this._progression(p, tempsJeuTotal);
+      const stade = this._stade(progression, !!p.data.cultureActuelle);
+      if (stade !== p._dernierStade) {
+        this._reconstruireVisuel(p, stade);
+        p._dernierStade = stade;
+      }
+      p._progressionCourante = progression;
+    });
+  }
+
+  _viderGroupe(groupe) {
+    while (groupe.children.length) {
+      const enfant = groupe.children.pop();
+      enfant.geometry?.dispose();
+      enfant.material?.dispose();
+    }
+  }
+
+  _reconstruireVisuel(p, stade) {
+    this._viderGroupe(p.groupePousse);
+    if (stade === STADE_VIDE) return;
+
+    const culture = MondeData.cultures.find((c) => c.id === p.data.cultureActuelle.id);
+    const echelle = stade === STADE_POUSSE ? 0.35 : stade === STADE_CROISSANCE ? 0.7 : 1.0;
+    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x4a8a3a, roughness: 0.85 });
+
+    // Touffe de feuilles génériques (3 petits cônes), hauteur proportionnelle
+    // au stade de croissance.
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      const feuille = new THREE.Mesh(new THREE.ConeGeometry(0.12 * echelle, 0.5 * echelle, 6), materiauFeuille);
+      feuille.position.set(Math.cos(angle) * 0.15, 0.25 * echelle, Math.sin(angle) * 0.15);
+      feuille.castShadow = true;
+      p.groupePousse.add(feuille);
+    }
+
+    // À maturité : fruits/tubercules colorés selon la culture, prêts à être
+    // récoltés (repère visuel clair pour le joueur).
+    if (stade === STADE_MATURE) {
+      const materiauFruit = new THREE.MeshStandardMaterial({ color: culture.couleur, roughness: 0.6 });
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2 + 0.4;
+        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), materiauFruit);
+        fruit.position.set(Math.cos(angle) * 0.22, 0.2, Math.sin(angle) * 0.22);
+        fruit.castShadow = true;
+        p.groupePousse.add(fruit);
+      }
+    }
+  }
+
+  // --- Actions déclenchées par le système d'interaction (touche E) -------
+  planter(parcelleEntree, cultureId, tempsJeuTotal) {
+    const culture = MondeData.cultures.find((c) => c.id === cultureId);
+    if (!culture || parcelleEntree.data.cultureActuelle) return;
+    parcelleEntree.data.cultureActuelle = {
+      id: cultureId,
+      dureeJours: culture.dureeCroissanceJours,
+      datePlantation: tempsJeuTotal,
+      bonusEngrais: 0,
+    };
+  }
+
+  appliquerEngrais(parcelleEntree) {
+    const c = parcelleEntree.data.cultureActuelle;
+    if (!c || this.joueur.engrais <= 0) return false;
+    c.bonusEngrais = Math.min(0.8, (c.bonusEngrais || 0) + MondeData.engrais.reductionTemps);
+    this.joueur.engrais -= 1;
+    return true;
+  }
+
+  recolter(parcelleEntree) {
+    const c = parcelleEntree.data.cultureActuelle;
+    if (!c) return null;
+    const culture = MondeData.cultures.find((cu) => cu.id === c.id);
+    this.joueur.inventaire[c.id] = (this.joueur.inventaire[c.id] || 0) + 1;
+    parcelleEntree.data.cultureActuelle = null;
+    return culture;
+  }
+
+  // --- Économie simple (coopérative = achète, épicerie = vend) -----------
+  vendreRecolte(commerceEntree) {
+    const achete = commerceEntree.data.achete || [];
+    let total = 0, nbVendu = 0;
+    achete.forEach((id) => {
+      const quantite = this.joueur.inventaire[id] || 0;
+      if (quantite > 0) {
+        const culture = MondeData.cultures.find((c) => c.id === id);
+        total += quantite * (culture?.prixVenteBase || 0);
+        nbVendu += quantite;
+        this.joueur.inventaire[id] = 0;
+      }
+    });
+    this.joueur.argent += total;
+    return { total, nbVendu };
+  }
+
+  acheterEngrais(commerceEntree) {
+    if (!(commerceEntree.data.vend || []).includes("engrais")) return false;
+    if (this.joueur.argent < MondeData.engrais.prixAchat) return false;
+    this.joueur.argent -= MondeData.engrais.prixAchat;
+    this.joueur.engrais += 1;
+    return true;
+  }
+}
+
+
+/* ==========================================================================
+   7. BOUCLE DE JEU — main()
    ==========================================================================
    Assemble les modules précédents, gère la caméra suiveuse (orbitale
    autour du personnage via OrbitControls), détecte la zone courante pour
@@ -1764,6 +2002,10 @@ function main() {
 
   // Instanciation des foyers (module 2) à partir du décor généré.
   const foyers = terrain.foyers.map((f) => new Foyer(f));
+
+  // --- État du joueur et gestion des cultures (module 3) ------------------
+  const joueur = { argent: 50, engrais: 1, inventaire: {} };
+  const cultures = new GestionCultures(terrain.parcelles, joueur);
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -1795,11 +2037,14 @@ function main() {
     const nouvelId = zoneTrouvee ? zoneTrouvee.id : null;
     if (nouvelId !== zoneActuelleId) {
       zoneActuelleId = nouvelId;
-      const nom = zoneTrouvee ? zoneTrouvee.nom : "En chemin";
-      hudZoneNom.textContent = nom;
-      hudZoneFlottant.textContent = nom;
-      hudZoneFlottant.classList.toggle("visible", !!zoneTrouvee);
+      hudZoneNom.textContent = zoneTrouvee ? zoneTrouvee.nom : "En chemin";
     }
+    // Bulle du bas : priorité au rassemblement, puis à un message temporaire
+    // (récolte, achat…), sinon le nom de la zone courante.
+    if (rassemblementActif) return; // gérée par `declencherRassemblement`
+    if (messageMinuteur > 0) return; // gérée par `afficherMessage`
+    hudZoneFlottant.textContent = zoneActuelleId ? hudZoneNom.textContent : "";
+    hudZoneFlottant.classList.toggle("visible", !!zoneActuelleId);
   }
 
   function formaterHeure(h) {
@@ -1839,6 +2084,61 @@ function main() {
       }
     }
 
+    // Parcelle de plantation la plus proche (planter / récolter / engrais).
+    if (!cibleCourante) {
+      for (const p of terrain.parcelles) {
+        if (p.position.distanceTo(pos) > 3.2) continue;
+        const c = p.data.cultureActuelle;
+        if (!c) {
+          cibleCourante = { libelle: "E : planter une culture", action: () => ouvrirPanneauPlantation(p) };
+        } else if (p._progressionCourante >= 1) {
+          const culture = MondeData.cultures.find((cu) => cu.id === c.id);
+          cibleCourante = {
+            libelle: `E : récolter (${culture.icone} ${culture.nom})`,
+            action: () => {
+              const recolte = cultures.recolter(p);
+              afficherMessage(`Récolté : ${recolte.icone} ${recolte.nom}`);
+              mettreAJourHudEconomie();
+            },
+          };
+        } else if (joueur.engrais > 0) {
+          const pourcent = Math.round(p._progressionCourante * 100);
+          cibleCourante = {
+            libelle: `E : mettre de l'engrais (croissance ${pourcent}%, engrais : ${joueur.engrais})`,
+            action: () => { cultures.appliquerEngrais(p); mettreAJourHudEconomie(); },
+          };
+        }
+        if (cibleCourante) break;
+      }
+    }
+
+    // Commerces du village (vendre la récolte / acheter de l'engrais).
+    if (!cibleCourante) {
+      for (const c of terrain.commerces) {
+        if (c.position.distanceTo(pos) > 4) continue;
+        if (c.data.achete) {
+          cibleCourante = {
+            libelle: `E : vendre la récolte à ${c.data.nom}`,
+            action: () => {
+              const { total, nbVendu } = cultures.vendreRecolte(c);
+              afficherMessage(nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment");
+              mettreAJourHudEconomie();
+            },
+          };
+        } else if (c.data.vend?.includes("engrais")) {
+          cibleCourante = {
+            libelle: `E : acheter un engrais (${MondeData.engrais.prixAchat} pièces) à ${c.data.nom}`,
+            action: () => {
+              const reussi = cultures.acheterEngrais(c);
+              afficherMessage(reussi ? "Engrais acheté" : "Pas assez d'argent");
+              mettreAJourHudEconomie();
+            },
+          };
+        }
+        if (cibleCourante) break;
+      }
+    }
+
     // Aire de rassemblement (conque), si rien de plus proche n'a été trouvé.
     if (!cibleCourante) {
       for (const aire of terrain.airesRassemblement) {
@@ -1855,6 +2155,49 @@ function main() {
     hudInteraction.classList.toggle("visible", !!cibleCourante);
     hudInteraction.textContent = cibleCourante ? cibleCourante.libelle : "";
   }
+
+  // Petit message temporaire au centre bas de l'écran (réutilise la bulle
+  // de zone pour éviter de multiplier les éléments de HUD).
+  let messageMinuteur = 0;
+  function afficherMessage(texte) {
+    hudZoneFlottant.textContent = texte;
+    hudZoneFlottant.classList.add("visible");
+    messageMinuteur = 2.5;
+  }
+
+  // --- Panneau de sélection de culture (plantation) -----------------------
+  const panneauPlantation = document.getElementById("panneau-plantation");
+  const grillePlantation = document.getElementById("grille-plantation");
+  let parcelleCiblee = null;
+
+  function ouvrirPanneauPlantation(parcelleEntree) {
+    parcelleCiblee = parcelleEntree;
+    grillePlantation.innerHTML = "";
+    MondeData.cultures.forEach((culture) => {
+      const bouton = document.createElement("button");
+      bouton.className = "choix-culture";
+      bouton.innerHTML = `${culture.icone} ${culture.nom}<br><small>${culture.dureeCroissanceJours} j · ${culture.prixVenteBase} pièces</small>`;
+      bouton.addEventListener("click", () => {
+        cultures.planter(parcelleCiblee, culture.id, sceneManager.tempsJeuTotal);
+        panneauPlantation.classList.remove("visible");
+        afficherMessage(`Planté : ${culture.icone} ${culture.nom}`);
+      });
+      grillePlantation.appendChild(bouton);
+    });
+    panneauPlantation.classList.add("visible");
+  }
+
+  // --- HUD économie (argent + inventaire) ---------------------------------
+  const hudArgent = document.getElementById("hud-argent");
+  const hudInventaire = document.getElementById("hud-inventaire");
+  function mettreAJourHudEconomie() {
+    hudArgent.textContent = `💰 ${joueur.argent} · 🧪 ${joueur.engrais}`;
+    const objets = Object.entries(joueur.inventaire).filter(([, q]) => q > 0);
+    hudInventaire.textContent = objets.length
+      ? objets.map(([id, q]) => `${MondeData.cultures.find((c) => c.id === id)?.icone || "•"} ${q}`).join("  ")
+      : "Inventaire vide";
+  }
+  mettreAJourHudEconomie();
 
   // Déclenche un rassemblement communautaire NEUTRE (affaires courantes,
   // conflits de voisinage) : les silhouettes de décor convergent vers l'aire
@@ -2002,7 +2345,12 @@ function main() {
     personnage.update(dt);
     sceneManager.mettreAJourCycleJourNuit(dt);
     foyers.forEach((f) => f.update(dt));
+    cultures.update(sceneManager.tempsJeuTotal);
     mettreAJourRassemblement(dt);
+    if (messageMinuteur > 0) {
+      messageMinuteur -= dt;
+      if (messageMinuteur <= 0) hudZoneFlottant.classList.remove("visible");
+    }
     mettreAJourInteractionDisponible();
 
     if (etaitNuit && !sceneManager.estNuit) {

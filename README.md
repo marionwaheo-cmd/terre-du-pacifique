@@ -49,6 +49,17 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   direct par la Web Audio API (bouton **🎵 Musique**) : aucun fichier audio
   externe, donc aucun risque de droits d'auteur.
 
+**Module 3 — cultures & économie**
+- Planter une culture sur une parcelle vide (**E**, puis choisir dans le
+  panneau : igname, pastèque, tomate, taro, manioc, café).
+- Croissance datée sur l'horloge de jeu, avec un visuel qui évolue
+  (pousse → croissance → maturité).
+- Récolter (**E** sur une parcelle mûre) : alimente l'inventaire.
+- Vendre la récolte à la coopérative agricole du village (**E**).
+- Acheter de l'engrais à l'épicerie (**E**) pour accélérer la croissance
+  d'une parcelle en cours.
+- Argent, engrais et inventaire affichés dans le HUD.
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 
