@@ -143,6 +143,26 @@ traduite en géométries/matériaux Three.js originaux.
     parcelles affichées à l'écran (raycasting Three.js) pour semer en
     série, sans repasser par le panneau de choix à chaque parcelle. Le
     panneau (E à proximité) reste disponible pour planter au cas par cas.
+
+----------------------------------------------------------------------------
+ MODULE 4 — POPULATION
+----------------------------------------------------------------------------
+  - Les emplacements PNJ réservés (`MondeData.zones[].pnjSlots`) sont
+    maintenant de vrais habitants (silhouette humanoïde partagée) qui
+    errent doucement autour de leur case (`GestionPopulation.update`).
+  - La vente de récolte alimente le "revenu communautaire" des tribus
+    (`tribu.revenuMenage`) ; chaque jour de jeu écoulé, un revenu suffisant
+    fait grandir la population (`tribu.population`) — simplification
+    volontaire, un futur module pourra attribuer précisément le revenu à
+    la tribu d'origine de la parcelle vendue.
+  - Une fois la population totale suffisante, l'emplacement réservé du
+    village ("ecole_future") devient constructible (E, coût en pièces) :
+    `TerrainBuilder.construireSurEmplacementReserve` transforme la
+    silhouette fantôme en bâtiment réel, sans tout régénérer.
+  - Chaque habitant peut être salué (E) : un texte neutre et fixe, sans nom
+    ni personnalité — volontairement minimal, c'est le point d'ancrage pour
+    un futur module de dialogue (tensions de voisinage, chef de tribu,
+    maire, police — voir `MondeData.evenements`, toujours vide ici).
 ============================================================================
 -->
 
@@ -887,6 +907,8 @@ class TerrainBuilder {
     this.villageoisDecor = [];     // silhouettes génériques pour l'assemblée
     this.parcelles = [];           // { id, data, position, groupePousse, zoneId } — module 3
     this.commerces = [];           // { id, data (commerce), position, zoneId } — module 3
+    this.batiments = [];           // { id, data, groupe, corps, zoneId } — tous les bâtiments
+    this.pnjs = [];                 // { id, data, groupe, home: Vector3, zoneId } — module 4
 
     this._genererSolBase();
     MondeData.zones.forEach((zone) => this._genererZone(zone));
@@ -972,8 +994,9 @@ class TerrainBuilder {
       if (zone.aireRassemblement) groupeZone.add(this._genererAireRassemblement(zone));
     } else if (zone.type === "tribu") {
       zone.cases.forEach((c) => groupeZone.add(this._genererCase(c, zone)));
-      // Emplacements PNJ réservés : marqueurs discrets (cf. module population).
-      zone.pnjSlots.forEach((slot) => groupeZone.add(this._genererMarqueurPNJSlot(slot)));
+      // Habitants (module 4 — population) : silhouettes humanoïdes génériques
+      // qui errent doucement autour de leur case (voir `GestionPopulation`).
+      zone.pnjSlots.forEach((slot) => groupeZone.add(this._genererPNJ(slot, zone)));
       if (zone.foyers) zone.foyers.forEach((f) => groupeZone.add(this._genererFoyer(f, zone)));
       if (zone.aireCoutume) groupeZone.add(this._genererAireCoutume(zone));
     } else if (zone.type === "plantation") {
@@ -1053,7 +1076,41 @@ class TerrainBuilder {
         zoneId: zone.id,
       });
     }
+
+    // Registre de tous les bâtiments (module 4 — population) : `corps` et
+    // `groupe` permettent de transformer visuellement un emplacement réservé
+    // en bâtiment construit (ex. l'école) sans tout régénérer.
+    this.batiments.push({
+      id: batiment.id,
+      data: batiment,
+      groupe,
+      corps,
+      position: new THREE.Vector3(batiment.position.x, h, batiment.position.z),
+      zoneId: zone.id,
+    });
     return groupe;
+  }
+
+  // Transforme un emplacement réservé (silhouette fantôme semi-transparente)
+  // en bâtiment réellement construit : matériau opaque + toit ajouté.
+  // Utilisé par `GestionPopulation` quand l'école est construite.
+  construireSurEmplacementReserve(batimentEntree, couleurToit = 0x3a6ea8) {
+    const { corps, groupe } = batimentEntree;
+    corps.material.transparent = false;
+    corps.material.opacity = 1;
+    corps.material.color.setHex(0xeef0e4);
+    corps.castShadow = true;
+
+    const largeur = corps.geometry.parameters.width;
+    const hauteurMurs = corps.geometry.parameters.height;
+    const toit = new THREE.Mesh(
+      new THREE.ConeGeometry(largeur * 0.75, 2.2, 4),
+      new THREE.MeshStandardMaterial({ color: couleurToit, roughness: 0.7 })
+    );
+    toit.rotation.y = Math.PI / 4;
+    toit.position.y = hauteurMurs + 1.1;
+    toit.castShadow = true;
+    groupe.add(toit);
   }
 
   // Case traditionnelle générique (forme ronde + toit conique haut) — silhouette
@@ -1124,17 +1181,45 @@ class TerrainBuilder {
     return groupe;
   }
 
-  // Marqueur discret pour un emplacement de PNJ réservé (invisible en jeu
-  // normal : petite balise semi-transparente, utile en développement).
-  _genererMarqueurPNJSlot(slot) {
-    const geometrie = new THREE.ConeGeometry(0.3, 0.9, 8);
-    const materiau = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
-    const marqueur = new THREE.Mesh(geometrie, materiau);
-    marqueur.name = `PNJSlot_${slot.id}`;
-    marqueur.userData = { ...slot, estEmplacementReserve: true };
+  // --- HABITANT (module 4 — population) -----------------------------------
+  // Silhouette humanoïde générique (gabarit partagé avec le personnage et
+  // les villageois de décor), couleur de tenue variée mais sobre pour le
+  // chef de tribu (distingué sans ornement culturel précis). Enregistré
+  // dans `this.pnjs` pour que `GestionPopulation` lui fasse errer
+  // doucement autour de sa case, et puisse plus tard y accrocher dialogues
+  // et événements (voir points d'extension en tête de fichier).
+  _genererPNJ(slot, zone) {
+    const palette = [0x7a5a3a, 0x3a6ea8, 0x5a7a4a, 0x8a5a6a, 0x6a6a8a, 0xd1477a, 0xe0a62b];
+    const teintesPeau = MondeData.garderobe.teintesPeau;
+    const estChef = slot.role === "chef_tribu";
+    const genre = Math.random() < 0.5 ? "femme" : "homme";
+    const couleurHaut = estChef ? 0x7a2635 : palette[Math.floor(Math.random() * palette.length)];
+
+    const { groupe } = construireSilhouetteHumaine({
+      genre,
+      couleurHaut,
+      couleurBas: genre === "homme" ? 0x33302a : couleurHaut,
+      couleurMotif: estChef ? 0xe8b84b : 0xffffff,
+      couleurPeau: teintesPeau[Math.floor(Math.random() * teintesPeau.length)],
+      detaille: estChef, // le chef porte le petit pendentif décoratif
+    });
+
     const h = this.obtenirHauteurSol(slot.position.x, slot.position.z);
-    marqueur.position.set(slot.position.x, h + 0.6, slot.position.z);
-    return marqueur;
+    groupe.position.set(slot.position.x, h, slot.position.z);
+    groupe.rotation.y = Math.random() * Math.PI * 2;
+    groupe.userData = { ...slot, zoneId: zone.id };
+
+    this.pnjs.push({
+      id: slot.id,
+      data: slot,
+      groupe,
+      home: new THREE.Vector3(slot.position.x, h, slot.position.z),
+      zoneId: zone.id,
+      // État d'errance propre à `GestionPopulation.update` :
+      cible: null,
+      pause: Math.random() * 3,
+    });
+    return groupe;
   }
 
   // --- AIRE DE RASSEMBLEMENT (village) ------------------------------------
@@ -2034,7 +2119,115 @@ class GestionCultures {
 
 
 /* ==========================================================================
-   7. BOUCLE DE JEU — main()
+   7. POPULATION — GestionPopulation (module 4)
+   ==========================================================================
+   Fait errer doucement les habitants (PNJ) autour de leur case, et relie
+   l'activité économique du joueur (vente de récoltes) à la croissance de
+   la population : chaque vente alimente le "revenu communautaire" des
+   tribus ; quand il dépasse un seuil, la population augmente. Une fois la
+   population totale suffisante, l'école (emplacement réservé du village)
+   devient constructible. AUCUN PNJ nommé, AUCUN dialogue, AUCUN conflit :
+   ceci reste un point d'ancrage pour les modules futurs (dialogues,
+   emploi, conflits de voisinage), volontairement minimal ici.
+   ========================================================================== */
+
+const SEUIL_CROISSANCE_REVENU = 40; // revenuMenage nécessaire pour +1 habitant
+
+class GestionPopulation {
+  constructor(terrain, joueur) {
+    this.terrain = terrain;
+    this.joueur = joueur;
+    this.obtenirHauteurSol = terrain.obtenirHauteurSol;
+    this.tribus = MondeData.zones.filter((z) => z.type === "tribu");
+  }
+
+  // --- Errance douce des habitants ----------------------------------------
+  update(dt) {
+    this.terrain.pnjs.forEach((pnj) => {
+      if (pnj.pause > 0) { pnj.pause -= dt; return; }
+
+      if (!pnj.cible) {
+        const angle = Math.random() * Math.PI * 2;
+        const rayon = 2 + Math.random() * 4;
+        const x = pnj.home.x + Math.cos(angle) * rayon;
+        const z = pnj.home.z + Math.sin(angle) * rayon;
+        pnj.cible = new THREE.Vector3(x, this.obtenirHauteurSol(x, z), z);
+      }
+
+      const direction = pnj.cible.clone().sub(pnj.groupe.position);
+      direction.y = 0;
+      const distance = direction.length();
+      if (distance < 0.25) {
+        pnj.cible = null;
+        pnj.pause = 2 + Math.random() * 4;
+        return;
+      }
+      direction.normalize();
+      const vitesse = 1.2;
+      pnj.groupe.position.x += direction.x * vitesse * dt;
+      pnj.groupe.position.z += direction.z * vitesse * dt;
+      pnj.groupe.position.y = this.obtenirHauteurSol(pnj.groupe.position.x, pnj.groupe.position.z);
+
+      const angleCible = Math.atan2(direction.x, direction.z);
+      let delta = angleCible - pnj.groupe.rotation.y;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      pnj.groupe.rotation.y += delta * Math.min(1, dt * 6);
+    });
+  }
+
+  // --- Économie communautaire ---------------------------------------------
+  // Appelé quand le joueur vend sa récolte : une partie du revenu profite
+  // aux tribus (simplification volontaire — un futur module pourra
+  // attribuer précisément le revenu à la tribu dont vient la parcelle).
+  ajouterRevenuCommunautaire(montant) {
+    if (this.tribus.length === 0 || montant <= 0) return;
+    const part = montant / this.tribus.length;
+    this.tribus.forEach((tribu) => { tribu.revenuMenage += part; });
+  }
+
+  // Appelé une fois par jour de jeu écoulé (voir `main()`).
+  nouveauJour() {
+    this.tribus.forEach((tribu) => {
+      let croissances = 0;
+      while (tribu.revenuMenage >= SEUIL_CROISSANCE_REVENU && croissances < 3) {
+        tribu.revenuMenage -= SEUIL_CROISSANCE_REVENU;
+        tribu.population += 1;
+        croissances++;
+      }
+    });
+  }
+
+  populationTotale() {
+    return this.tribus.reduce((somme, t) => somme + t.population, 0);
+  }
+
+  seuilPopulationEcole() {
+    return this.tribus.reduce((somme, t) => somme + t.seuilConstructionEcole, 0);
+  }
+
+  // --- École (emplacement réservé du village) -----------------------------
+  trouverEmplacementEcole() {
+    return this.terrain.batiments.find((b) => b.id === "ecole_future");
+  }
+
+  ecoleConstruite() {
+    const emplacement = this.trouverEmplacementEcole();
+    return !emplacement || emplacement.data.type === "ecole";
+  }
+
+  construireEcole() {
+    const emplacement = this.trouverEmplacementEcole();
+    if (!emplacement || emplacement.data.type === "ecole") return false;
+    this.terrain.construireSurEmplacementReserve(emplacement);
+    emplacement.data.type = "ecole";
+    emplacement.data.note = "École construite par la communauté";
+    return true;
+  }
+}
+
+
+/* ==========================================================================
+   8. BOUCLE DE JEU — main()
    ==========================================================================
    Assemble les modules précédents, gère la caméra suiveuse (orbitale
    autour du personnage via OrbitControls), détecte la zone courante pour
@@ -2052,6 +2245,7 @@ function main() {
   // --- État du joueur et gestion des cultures (module 3) ------------------
   const joueur = { argent: 50, engrais: 1, inventaire: {} };
   const cultures = new GestionCultures(terrain.parcelles, joueur);
+  const population = new GestionPopulation(terrain, joueur);
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -2167,6 +2361,7 @@ function main() {
             libelle: `E : vendre la récolte à ${c.data.nom}`,
             action: () => {
               const { total, nbVendu } = cultures.vendreRecolte(c);
+              if (nbVendu > 0) population.ajouterRevenuCommunautaire(total);
               afficherMessage(nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment");
               mettreAJourHudEconomie();
             },
@@ -2182,6 +2377,48 @@ function main() {
           };
         }
         if (cibleCourante) break;
+      }
+    }
+
+    // École (module 4) : constructible une fois la population suffisante.
+    if (!cibleCourante && !population.ecoleConstruite()) {
+      const emplacement = population.trouverEmplacementEcole();
+      if (emplacement && emplacement.position.distanceTo(pos) <= 4) {
+        const popActuelle = population.populationTotale();
+        const seuil = population.seuilPopulationEcole();
+        const coutEcole = 200;
+        if (popActuelle >= seuil) {
+          cibleCourante = {
+            libelle: `E : construire l'école (${coutEcole} pièces)`,
+            action: () => {
+              if (joueur.argent < coutEcole) { afficherMessage("Pas assez d'argent pour l'école"); return; }
+              joueur.argent -= coutEcole;
+              population.construireEcole();
+              afficherMessage("École construite ! La communauté grandit.");
+              mettreAJourHudEconomie();
+            },
+          };
+        } else {
+          cibleCourante = {
+            libelle: `École : population insuffisante (${Math.floor(popActuelle)}/${seuil})`,
+            action: () => {},
+          };
+        }
+      }
+    }
+
+    // Habitants (PNJ) : simple salutation, point d'ancrage pour un futur
+    // module de dialogue (jamais de conflit ou de sujet dramatique ici).
+    if (!cibleCourante) {
+      for (const pnj of terrain.pnjs) {
+        if (pnj.groupe.position.distanceTo(pos) <= 2.2) {
+          const estChef = pnj.data.role === "chef_tribu";
+          cibleCourante = {
+            libelle: "E : saluer",
+            action: () => afficherMessage(estChef ? "Le chef de tribu vous salue." : "Un habitant vous salue."),
+          };
+          break;
+        }
       }
     }
 
@@ -2314,7 +2551,7 @@ function main() {
   const hudArgent = document.getElementById("hud-argent");
   const hudInventaire = document.getElementById("hud-inventaire");
   function mettreAJourHudEconomie() {
-    hudArgent.textContent = `💰 ${joueur.argent} · 🧪 ${joueur.engrais}`;
+    hudArgent.textContent = `💰 ${joueur.argent} · 🧪 ${joueur.engrais} · 👥 ${Math.floor(population.populationTotale())}`;
     const objets = Object.entries(joueur.inventaire).filter(([, q]) => q > 0);
     hudInventaire.textContent = objets.length
       ? objets.map(([id, q]) => `${MondeData.cultures.find((c) => c.id === id)?.icone || "•"} ${q}`).join("  ")
@@ -2461,6 +2698,7 @@ function main() {
   // Suit les transitions nuit->jour pour éteindre automatiquement les
   // foyers restés allumés (ils doivent être rallumés chaque soir).
   let etaitNuit = false;
+  let dernierJourTraite = sceneManager.jourJeu;
 
   function boucleAnimation() {
     const dt = Math.min(sceneManager.horloge.getDelta(), 0.05);
@@ -2469,6 +2707,12 @@ function main() {
     sceneManager.mettreAJourCycleJourNuit(dt);
     foyers.forEach((f) => f.update(dt));
     cultures.update(sceneManager.tempsJeuTotal);
+    population.update(dt);
+    if (sceneManager.jourJeu !== dernierJourTraite) {
+      dernierJourTraite = sceneManager.jourJeu;
+      population.nouveauJour();
+      mettreAJourHudEconomie();
+    }
     mettreAJourRassemblement(dt);
     if (messageMinuteur > 0) {
       messageMinuteur -= dt;

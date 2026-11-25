@@ -60,6 +60,23 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   d'une parcelle en cours.
 - Argent, engrais et inventaire affichés dans le HUD.
 
+**Module 3bis — semis par peinture**
+- Barre de graines en bas à gauche : on sélectionne une graine puis on
+  clique/glisse directement sur les parcelles affichées à l'écran pour
+  semer en série (façon jeux de gestion mobiles), sans repasser par un
+  menu à chaque parcelle.
+
+**Module 4 — population**
+- Les emplacements d'habitants sont maintenant de vrais PNJ (silhouette
+  humanoïde) qui errent doucement autour de leur case.
+- Vendre sa récolte alimente le revenu des tribus, qui fait grandir leur
+  population chaque jour de jeu.
+- Une fois la population totale suffisante, l'école du village devient
+  constructible (**E**, en pièces).
+- Chaque habitant peut être salué (**E**) — texte neutre, sans dialogue :
+  réservé à un futur module (tensions de voisinage, chef de tribu, maire,
+  police), jamais de sujet dramatique ou politique ici.
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 
