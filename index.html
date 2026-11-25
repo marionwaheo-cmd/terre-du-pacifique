@@ -83,11 +83,45 @@ LIMITES TECHNIQUES CONNUES (voir aussi les messages console au chargement)
   - Le plan d'eau est une approximation stylisée (shader simple), pas une
     simulation physique de vagues.
   - Les bâtiments sont des silhouettes géométriques simples (boîtes, toits
-    pentus) : volontaire à ce stade, en attendant les visuels de référence
-    du module 4.
+    pentus) : volontaire à ce stade, en attendant des visuels plus détaillés.
   - Aucune gestion de collision fine (le personnage ne traverse pas les
     limites du terrain, mais peut traverser les bâtiments) : à raffiner
     si besoin dans un module ultérieur.
+
+----------------------------------------------------------------------------
+ MODULE 2 — AMBIANCE CULTURELLE, VUE AÉRIENNE ET PERSONNALISATION
+----------------------------------------------------------------------------
+Ajouté à partir de photos de référence (architecture des cases, costumes,
+assemblées communautaires, littoral). AUCUNE image n'est reproduite : il
+s'agit uniquement d'inspiration stylistique (couleurs, formes, ambiance),
+traduite en géométries/matériaux Three.js originaux.
+
+  - CYCLE JOUR/NUIT (`SceneManager.mettreAJourCycleJourNuit`) : le ciel,
+    la lumière et un champ d'étoiles évoluent sur un cycle accéléré.
+  - FOYERS (`Foyer`) : un petit feu de camp générique est placé à côté de
+    chaque case. La nuit, il s'éteint automatiquement au lever du jour et
+    doit être rallumé par le joueur (touche E à proximité) — réfère à la
+    coutume d'allumer un feu le soir. Aucune croyance n'est nommée dans le
+    jeu lui-même : le texte d'ambiance reste descriptif et respectueux.
+  - AIRE DE RASSEMBLEMENT (village) : le joueur peut "sonner la conque"
+    (touche E) pour déclencher un rassemblement communautaire NEUTRE
+    (affaires courantes, conflits de voisinage). Aucun sujet politique
+    réel n'est traité, conformément au cahier des charges.
+  - AIRE DE COUTUME (chaque tribu) : structure scénique statique (nattes,
+    tissus pliés, poteaux) représentant le lieu où se dérouleraient les
+    futurs événements de vie (mariage, naissance, deuil). Purement
+    décorative ici : aucune cérémonie n'est simulée, réservé à un futur
+    module "coutume"/dialogue.
+  - FLÈCHE FAÎTIÈRE : silhouette totémique générique au sommet de la case
+    du chef, symbolisant l'aîné du clan — forme abstraite, non une copie
+    d'un objet culturel précis.
+  - VUE AÉRIENNE (touche V) : bascule la caméra vers une vue du dessus
+    pour observer l'étendue des plantations et des tribus près du littoral.
+  - PERSONNALISATION (`Personnage.definirTenue`, touche I) : panneau
+    permettant de choisir une tenue parmi plusieurs couleurs/motifs
+    (inspirés de tissus imprimés, jamais copiés), pour un personnage
+    féminin ou masculin, ainsi qu'une teinte de peau. Aucun visage détaillé
+    n'est représenté : silhouettes génériques uniquement.
 ============================================================================
 -->
 
@@ -187,6 +221,68 @@ LIMITES TECHNIQUES CONNUES (voir aussi les messages console au chargement)
     z-index: 10;
     display: none;
   }
+
+  /* --- Invite d'interaction (module 2) ------------------------------- */
+  #hud-interaction {
+    position: fixed;
+    bottom: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 16px;
+    background: var(--couleur-fond-ui);
+    border: 1px solid var(--couleur-accent);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    z-index: 11;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  #hud-interaction.visible { opacity: 1; }
+
+  /* --- Panneau de personnalisation (module 2) ------------------------- */
+  #bouton-tenue, #bouton-musique {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    padding: 8px 14px;
+    background: var(--couleur-fond-ui);
+    border: 1px solid var(--couleur-accent);
+    border-radius: 999px;
+    color: var(--couleur-texte);
+    font-size: 0.8rem;
+    cursor: pointer;
+    z-index: 20;
+  }
+  #bouton-musique { right: 118px; }
+  #bouton-musique.actif { border-color: #6fcf97; }
+  #panneau-tenue {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    width: 250px;
+    padding: 14px;
+    background: var(--couleur-fond-ui);
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
+    z-index: 20;
+    font-size: 0.78rem;
+    display: none;
+  }
+  #panneau-tenue.visible { display: block; }
+  #panneau-tenue h3 { margin: 0 0 8px; font-size: 0.85rem; color: var(--couleur-accent); }
+  #panneau-tenue .ligne-genre { display: flex; gap: 6px; margin-bottom: 10px; }
+  #panneau-tenue .ligne-genre button {
+    flex: 1; padding: 5px; border-radius: 6px; border: 1px solid var(--couleur-accent);
+    background: transparent; color: var(--couleur-texte); cursor: pointer; font-size: 0.76rem;
+  }
+  #panneau-tenue .ligne-genre button.actif { background: var(--couleur-accent); color: #1c2a1c; font-weight: bold; }
+  #panneau-tenue .grille-swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .swatch {
+    width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+    border: 2px solid rgba(255,255,255,0.3); box-sizing: border-box;
+  }
+  .swatch.actif { border-color: var(--couleur-accent); box-shadow: 0 0 0 2px var(--couleur-accent); }
 </style>
 </head>
 <body>
@@ -200,11 +296,27 @@ LIMITES TECHNIQUES CONNUES (voir aussi les messages console au chargement)
 <div id="hud">
   <strong>Déplacement :</strong> W/A/S/D ou flèches<br>
   <strong>Caméra :</strong> clic-gauche + glisser pour orbiter, molette pour zoomer<br>
-  <strong>Zone actuelle :</strong> <span id="hud-zone-nom">—</span>
+  <strong>Vue aérienne :</strong> touche V · <strong>Tenue :</strong> touche I<br>
+  <strong>Zone actuelle :</strong> <span id="hud-zone-nom">—</span> ·
+  <strong>Heure :</strong> <span id="hud-heure">—</span>
 </div>
 
 <div id="hud-zone"></div>
+<div id="hud-interaction"></div>
 <div id="avertissement" id="avertissement-perf"></div>
+
+<button id="bouton-musique" title="Activer/couper la musique d'ambiance">🎵 Musique</button>
+<button id="bouton-tenue" title="Choisir la tenue (touche I)">👕 Tenue</button>
+<div id="panneau-tenue">
+  <h3>Apparence</h3>
+  <div class="ligne-genre">
+    <button id="genre-femme" class="actif">Féminin</button>
+    <button id="genre-homme">Masculin</button>
+  </div>
+  <div id="grille-tenues" class="grille-swatches"></div>
+  <h3>Teinte de peau</h3>
+  <div id="grille-peau" class="grille-swatches"></div>
+</div>
 
 <script type="importmap">
 {
@@ -240,6 +352,29 @@ const MondeData = {
     eau:        0x2f7f8f,
   },
 
+  // --- GARDE-ROBE (module personnalisation) -------------------------------
+  // Couleurs/motifs ORIGINAUX inspirés de l'esprit des tissus imprimés du
+  // Pacifique (couleurs vives, motifs simples), jamais la reproduction d'un
+  // tissu ou d'une photo existante. `couleur` = teinte principale du vêtement,
+  // `motif` = teinte des rayures/pois générés procéduralement sur une texture.
+  garderobe: {
+    femmes: [
+      { id: "robe_corail",   nom: "Robe corail à motifs",   couleur: 0xd1477a, motif: 0xf4c84a },
+      { id: "robe_turquoise",nom: "Robe turquoise",          couleur: 0x2fa6a0, motif: 0xffffff },
+      { id: "robe_safran",   nom: "Robe safran",             couleur: 0xe0a62b, motif: 0x6b2d2d },
+      { id: "robe_indigo",   nom: "Robe indigo",             couleur: 0x3b4a7a, motif: 0xe8b84b },
+    ],
+    hommes: [
+      { id: "chemise_ocre",    nom: "Chemise ocre",      couleur: 0xd98a2b, motif: 0x2b2b2b },
+      { id: "chemise_bordeaux",nom: "Chemise bordeaux",  couleur: 0x7a2635, motif: 0xf0e4c8 },
+      { id: "chemise_verte",   nom: "Chemise verte",     couleur: 0x3d6b3a, motif: 0xe8b84b },
+      { id: "chemise_marine",  nom: "Chemise bleu nuit", couleur: 0x25314f, motif: 0xffffff },
+    ],
+    // Teintes de peau génériques (aucun visage détaillé associé) pour
+    // refléter la diversité des communautés du Pacifique sans caricature.
+    teintesPeau: [0xf0c9a0, 0xd8a878, 0xa9744a, 0x8a5a36, 0x5c3b22],
+  },
+
   // --- ZONES -------------------------------------------------------------
   // type: "village" | "tribu" | "plantation"
   // position/taille en unités monde (1 unité ≈ 1 mètre)
@@ -260,6 +395,10 @@ const MondeData = {
         { id: "ecole_future", type: "emplacement_reserve", position: { x: -14, z: 6 },
           commerce: null, note: "Emplacement réservé — construction d'école (module population)" },
       ],
+      // Lieu de rassemblement communautaire : le joueur peut y "sonner la
+      // conque" pour réunir les habitants (affaires courantes, conflits de
+      // voisinage). Neutre politiquement — voir points d'extension.
+      aireRassemblement: { position: { x: 0, z: 13 } },
     },
     {
       id: "tribu_wae",
@@ -283,6 +422,16 @@ const MondeData = {
         { id: "pnj_wae_2", position: { x: -45, z: -27 }, role: "habitant" },
         { id: "pnj_wae_chef", position: { x: -55, z: -29 }, role: "chef_tribu" },
       ],
+      // Foyers à allumer la nuit, à côté de chaque case.
+      foyers: [
+        { id: "foyer_wae_1", position: { x: -54, z: -39 } },
+        { id: "foyer_wae_2", position: { x: -38, z: -43 } },
+        { id: "foyer_wae_3", position: { x: -46, z: -27 } },
+        { id: "foyer_wae_chef", position: { x: -58, z: -27 } },
+      ],
+      // Aire de coutume : lieu scénique réservé aux futurs événements de vie
+      // (mariage, naissance, deuil) — placée au centre de la tribu.
+      aireCoutume: true,
     },
     {
       id: "tribu_kaala",
@@ -303,6 +452,12 @@ const MondeData = {
         { id: "pnj_kaala_1", position: { x: 39, z: -43 }, role: "habitant" },
         { id: "pnj_kaala_2", position: { x: 47, z: -29 }, role: "habitant" },
       ],
+      foyers: [
+        { id: "foyer_kaala_1", position: { x: 36, z: -43 } },
+        { id: "foyer_kaala_2", position: { x: 52, z: -41 } },
+        { id: "foyer_kaala_3", position: { x: 44, z: -29 } },
+      ],
+      aireCoutume: true,
     },
     {
       id: "tribu_tiendi",
@@ -323,6 +478,12 @@ const MondeData = {
         { id: "pnj_tiendi_1", position: { x: -13, z: 43 }, role: "habitant" },
         { id: "pnj_tiendi_2", position: { x: -3, z: 45 }, role: "habitant" },
       ],
+      foyers: [
+        { id: "foyer_tiendi_1", position: { x: -16, z: 41 } },
+        { id: "foyer_tiendi_2", position: { x: 0, z: 43 } },
+        { id: "foyer_tiendi_3", position: { x: -12, z: 53 } },
+      ],
+      aireCoutume: true,
     },
 
     // --- PLANTATIONS (en périphérie des tribus) ---------------------------
@@ -427,6 +588,14 @@ class SceneManager {
     this._creerEclairage();
     this._creerCiel();
     this._creerEau();
+    this._creerEtoiles();
+
+    // --- Cycle jour/nuit (module 2) -----------------------------------
+    // Horloge de jeu accélérée : un cycle complet dure `dureeJourSecondes`.
+    // `tempsJeu` va de 0 (minuit) à 24 (minuit suivant).
+    this.dureeJourSecondes = 180;
+    this.tempsJeu = 8; // Démarre en milieu de matinée.
+    this.estNuit = false;
 
     window.addEventListener("resize", () => this._surRedimensionnement());
   }
@@ -456,13 +625,18 @@ class SceneManager {
   }
 
   _creerCiel() {
-    // Ciel "dynamique" simplifié : grand dôme en dégradé via shader custom léger.
+    // Ciel "dynamique" : grand dôme en dégradé, interpolé entre une palette
+    // de jour (chaude, tropicale) et une palette de nuit (bleu profond)
+    // selon l'uniform `facteurNuit` (0 = plein jour, 1 = pleine nuit).
     const geometrieCiel = new THREE.SphereGeometry(900, 24, 16);
     const materiauCiel = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       uniforms: {
-        couleurHaut: { value: new THREE.Color(0x4a90c0) },
-        couleurBas:  { value: new THREE.Color(0xe8d9a8) },
+        couleurHautJour:  { value: new THREE.Color(0x4a90c0) },
+        couleurBasJour:   { value: new THREE.Color(0xe8d9a8) },
+        couleurHautNuit:  { value: new THREE.Color(0x060a1a) },
+        couleurBasNuit:   { value: new THREE.Color(0x1a2240) },
+        facteurNuit:      { value: 0.0 },
       },
       vertexShader: `
         varying vec3 vPosition;
@@ -473,16 +647,82 @@ class SceneManager {
       `,
       fragmentShader: `
         varying vec3 vPosition;
-        uniform vec3 couleurHaut;
-        uniform vec3 couleurBas;
+        uniform vec3 couleurHautJour;
+        uniform vec3 couleurBasJour;
+        uniform vec3 couleurHautNuit;
+        uniform vec3 couleurBasNuit;
+        uniform float facteurNuit;
         void main() {
           float hauteur = normalize(vPosition).y * 0.5 + 0.5;
-          gl_FragColor = vec4(mix(couleurBas, couleurHaut, pow(hauteur, 0.7)), 1.0);
+          vec3 jour = mix(couleurBasJour, couleurHautJour, pow(hauteur, 0.7));
+          vec3 nuit = mix(couleurBasNuit, couleurHautNuit, pow(hauteur, 0.7));
+          gl_FragColor = vec4(mix(jour, nuit, facteurNuit), 1.0);
         }
       `,
     });
     this.ciel = new THREE.Mesh(geometrieCiel, materiauCiel);
     this.scene.add(this.ciel);
+  }
+
+  // Champ d'étoiles simple (nuage de points), visible uniquement la nuit.
+  _creerEtoiles() {
+    const nbEtoiles = 600;
+    const positions = new Float32Array(nbEtoiles * 3);
+    for (let i = 0; i < nbEtoiles; i++) {
+      // Répartition sur une demi-sphère au-dessus de la scène.
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI * 0.5;
+      const rayon = 850;
+      positions[i * 3 + 0] = rayon * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = rayon * Math.cos(phi);
+      positions[i * 3 + 2] = rayon * Math.sin(phi) * Math.sin(theta);
+    }
+    const geometrie = new THREE.BufferGeometry();
+    geometrie.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const materiau = new THREE.PointsMaterial({
+      color: 0xffffff, size: 2.2, sizeAttenuation: false,
+      transparent: true, opacity: 0, depthWrite: false,
+    });
+    this.etoiles = new THREE.Points(geometrie, materiau);
+    this.scene.add(this.etoiles);
+  }
+
+  // Fait avancer l'horloge de jeu et met à jour ciel/lumière/étoiles en
+  // conséquence. Appelé chaque frame depuis la boucle principale.
+  mettreAJourCycleJourNuit(dt) {
+    this.tempsJeu = (this.tempsJeu + (dt / this.dureeJourSecondes) * 24) % 24;
+
+    // facteurNuit : 0 en plein jour (6h-18h), monte à 1 en pleine nuit,
+    // avec une transition douce au crépuscule/à l'aube (±1h30).
+    const h = this.tempsJeu;
+    let facteurNuit;
+    if (h >= 7.5 && h <= 16.5) facteurNuit = 0;
+    else if (h > 16.5 && h < 19.5) facteurNuit = THREE.MathUtils.smoothstep(h, 16.5, 19.5);
+    else if (h >= 19.5 || h <= 4.5) facteurNuit = 1;
+    else facteurNuit = 1 - THREE.MathUtils.smoothstep(h, 4.5, 7.5);
+
+    this.estNuit = facteurNuit > 0.6;
+
+    this.ciel.material.uniforms.facteurNuit.value = facteurNuit;
+    this.etoiles.material.opacity = facteurNuit * 0.9;
+
+    // Le soleil parcourt un arc simple au-dessus de la carte.
+    const angle = ((h - 6) / 24) * Math.PI * 2;
+    const rayonSoleil = 110;
+    this.soleil.position.set(
+      Math.cos(angle) * rayonSoleil,
+      Math.max(8, Math.sin(angle) * rayonSoleil * 0.6 + 40),
+      -40
+    );
+    this.soleil.intensity = THREE.MathUtils.lerp(2.4, 0.08, facteurNuit);
+    this.soleil.color.setHex(facteurNuit > 0.3 ? 0xaac4ff : 0xfff1d6);
+
+    this.scene.fog.color.lerpColors(
+      new THREE.Color(0xaed4e8), new THREE.Color(0x0c1430), facteurNuit
+    );
+    this.scene.background.lerpColors(
+      new THREE.Color(0xaed4e8), new THREE.Color(0x0c1430), facteurNuit
+    );
   }
 
   _creerEau() {
@@ -526,6 +766,12 @@ class TerrainBuilder {
     this.groupeMonde = new THREE.Group();
     this.groupeMonde.name = "MondeGenere";
     this.scene.add(this.groupeMonde);
+
+    // Registres consultés par le système d'interaction (module 2) : chaque
+    // entrée référence l'objet 3D ET les données associées.
+    this.foyers = [];              // instances de Foyer (voir classe dédiée)
+    this.airesRassemblement = [];  // { position: Vector3, zoneId }
+    this.villageoisDecor = [];     // silhouettes génériques pour l'assemblée
 
     this._genererSolBase();
     MondeData.zones.forEach((zone) => this._genererZone(zone));
@@ -608,10 +854,13 @@ class TerrainBuilder {
 
     if (zone.type === "village") {
       zone.batiments.forEach((b) => groupeZone.add(this._genererBatiment(b, zone)));
+      if (zone.aireRassemblement) groupeZone.add(this._genererAireRassemblement(zone));
     } else if (zone.type === "tribu") {
       zone.cases.forEach((c) => groupeZone.add(this._genererCase(c, zone)));
       // Emplacements PNJ réservés : marqueurs discrets (cf. module population).
       zone.pnjSlots.forEach((slot) => groupeZone.add(this._genererMarqueurPNJSlot(slot)));
+      if (zone.foyers) zone.foyers.forEach((f) => groupeZone.add(this._genererFoyer(f, zone)));
+      if (zone.aireCoutume) groupeZone.add(this._genererAireCoutume(zone));
     } else if (zone.type === "plantation") {
       zone.parcelles.forEach((p) => groupeZone.add(this._genererParcelle(p, zone)));
     }
@@ -645,12 +894,15 @@ class TerrainBuilder {
   }
 
   // Bâtiment générique : socle + corps + toit pentu. Paramétrable par type.
+  // NOTE : `batiment.position` est une coordonnée ABSOLUE (comme tous les
+  // autres éléments de zone — cases, foyers, parcelles), et non un décalage
+  // par rapport au centre de la zone.
   _genererBatiment(batiment, zone) {
     const groupe = new THREE.Group();
     groupe.name = `Batiment_${batiment.id}`;
     groupe.userData = { ...batiment, zoneId: zone.id };
 
-    const h = this.obtenirHauteurSol(zone.centre.x + batiment.position.x, zone.centre.z + batiment.position.z);
+    const h = this.obtenirHauteurSol(batiment.position.x, batiment.position.z);
     const estReserve = batiment.type === "emplacement_reserve";
 
     const largeur = batiment.type === "mairie" ? 7 : 5.5;
@@ -676,22 +928,20 @@ class TerrainBuilder {
       groupe.add(toit);
     }
 
-    groupe.position.set(
-      zone.centre.x + batiment.position.x,
-      h,
-      zone.centre.z + batiment.position.z
-    );
+    groupe.position.set(batiment.position.x, h, batiment.position.z);
     return groupe;
   }
 
   // Case traditionnelle générique (forme ronde + toit conique haut) — silhouette
   // volontairement sobre et non-caricaturale, sans ornement culturel spécifique.
+  // NOTE : `caseData.position` est une coordonnée ABSOLUE (voir remarque dans
+  // `_genererBatiment`).
   _genererCase(caseData, zone) {
     const groupe = new THREE.Group();
     groupe.name = `Case_${caseData.id}`;
     groupe.userData = { ...caseData, zoneId: zone.id };
 
-    const h = this.obtenirHauteurSol(zone.centre.x + caseData.position.x, zone.centre.z + caseData.position.z);
+    const h = this.obtenirHauteurSol(caseData.position.x, caseData.position.z);
     const rayon = caseData.estCheferie ? 3.2 : 2.4;
     const hauteurMur = caseData.estCheferie ? 2.4 : 1.9;
 
@@ -708,22 +958,45 @@ class TerrainBuilder {
     toit.castShadow = true;
     groupe.add(toit);
 
-    // Flèche décorative sommitale pour la grande case (silhouette générique,
-    // sans reproduction d'un ornement culturel précis).
+    // Flèche faîtière : silhouette totémique générique au sommet de la case
+    // du chef, symbolisant l'aîné du clan. Forme ABSTRAITE construite par
+    // empilement de primitives (jamais la copie d'un objet culturel réel).
     if (caseData.estCheferie) {
-      const fleche = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.1, 1.6, 6),
-        new THREE.MeshStandardMaterial({ color: 0x3a2a18 })
-      );
-      fleche.position.y = hauteurMur + 3.4 + 0.8;
-      groupe.add(fleche);
+      const groupeFleche = new THREE.Group();
+      const materiauBois = new THREE.MeshStandardMaterial({ color: 0x3a2a18, roughness: 0.85 });
+      let y = 0;
+
+      // Hampe centrale.
+      const hampe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.0, 8), materiauBois);
+      hampe.position.y = y + 1.0;
+      hampe.castShadow = true;
+      groupeFleche.add(hampe);
+      y += 2.0;
+
+      // Disques empilés (évoquent les anneaux sculptés traditionnels, de
+      // façon stylisée et générique).
+      for (let i = 0; i < 3; i++) {
+        const disque = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.22 - i * 0.04, 0.26 - i * 0.04, 0.12, 10),
+          materiauBois
+        );
+        disque.position.y = y + 0.1;
+        disque.castShadow = true;
+        groupeFleche.add(disque);
+        y += 0.22;
+      }
+
+      // Pointe effilée sommitale.
+      const pointe = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.9, 8), materiauBois);
+      pointe.position.y = y + 0.45;
+      pointe.castShadow = true;
+      groupeFleche.add(pointe);
+
+      groupeFleche.position.y = hauteurMur + 3.4;
+      groupe.add(groupeFleche);
     }
 
-    groupe.position.set(
-      zone.centre.x + caseData.position.x,
-      h,
-      zone.centre.z + caseData.position.z
-    );
+    groupe.position.set(caseData.position.x, h, caseData.position.z);
     return groupe;
   }
 
@@ -738,6 +1011,191 @@ class TerrainBuilder {
     const h = this.obtenirHauteurSol(slot.position.x, slot.position.z);
     marqueur.position.set(slot.position.x, h + 0.6, slot.position.z);
     return marqueur;
+  }
+
+  // --- AIRE DE RASSEMBLEMENT (village) ------------------------------------
+  // Clairière circulaire avec une sculpture stylisée évoquant une conque,
+  // posée sur un socle. Interaction gérée par le système d'interaction
+  // (module 2) : voir `Interactions` dans main().
+  _genererAireRassemblement(zone) {
+    const groupe = new THREE.Group();
+    const pos = zone.aireRassemblement.position;
+    const h = this.obtenirHauteurSol(pos.x, pos.z);
+
+    // Socle de pierre circulaire.
+    const socle = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 2.4, 0.35, 16),
+      new THREE.MeshStandardMaterial({ color: 0x8a8070, roughness: 0.95 })
+    );
+    socle.position.set(pos.x, h + 0.17, pos.z);
+    socle.receiveShadow = true;
+    socle.castShadow = true;
+    groupe.add(socle);
+
+    // Sculpture évoquant une conque : forme spiralée simplifiée (tore +
+    // cône), de couleur crème — silhouette générique, pas un modèle réaliste.
+    const materiauConque = new THREE.MeshStandardMaterial({ color: 0xe9dcc0, roughness: 0.6 });
+    const corpsConque = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.3, 10, 1, true), materiauConque);
+    corpsConque.position.set(pos.x, h + 0.35 + 0.65, pos.z);
+    corpsConque.rotation.x = Math.PI * 0.08;
+    corpsConque.castShadow = true;
+    groupe.add(corpsConque);
+    const anneauConque = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.12, 8, 16), materiauConque);
+    anneauConque.position.set(pos.x, h + 0.35 + 1.1, pos.z);
+    anneauConque.rotation.x = Math.PI / 2;
+    anneauConque.castShadow = true;
+    groupe.add(anneauConque);
+
+    groupe.userData = { estAireRassemblement: true, zoneId: zone.id };
+    this.airesRassemblement.push({
+      position: new THREE.Vector3(pos.x, h, pos.z),
+      zoneId: zone.id,
+    });
+
+    // Quelques silhouettes génériques (habitants) placées en cercle autour
+    // de l'aire : utilisées comme décor pour l'animation de rassemblement.
+    const nbVillageois = 6;
+    for (let i = 0; i < nbVillageois; i++) {
+      const angle = (i / nbVillageois) * Math.PI * 2;
+      const rayon = 9;
+      const vx = pos.x + Math.cos(angle) * rayon;
+      const vz = pos.z + Math.sin(angle) * rayon;
+      const silhouette = this._genererSilhouetteGenerique();
+      const hv = this.obtenirHauteurSol(vx, vz);
+      silhouette.position.set(vx, hv, vz);
+      silhouette.userData = {
+        positionRepos: new THREE.Vector3(vx, hv, vz),
+        positionRassemblement: new THREE.Vector3(pos.x + Math.cos(angle) * 2.8, h, pos.z + Math.sin(angle) * 2.8),
+      };
+      groupe.add(silhouette);
+      this.villageoisDecor.push(silhouette);
+    }
+
+    return groupe;
+  }
+
+  // Silhouette générique réutilisable (habitant en décor) : gabarit humanoïde
+  // simplifié (tête, torse, bras, jambes) construit par `construireSilhouetteHumaine`
+  // — voir section 3bis. Couleur de tenue et genre tirés au hasard, sans
+  // visage ni détail ethnique précis (silhouette volontairement sobre).
+  _genererSilhouetteGenerique() {
+    const couleursTenue = [0x7a5a3a, 0x3a6ea8, 0x5a7a4a, 0x8a5a6a, 0x6a6a8a, 0xd1477a, 0xe0a62b];
+    const teintesPeau = MondeData.garderobe.teintesPeau;
+    const genre = Math.random() < 0.5 ? "femme" : "homme";
+    const couleurTenue = couleursTenue[Math.floor(Math.random() * couleursTenue.length)];
+    const couleurPeau = teintesPeau[Math.floor(Math.random() * teintesPeau.length)];
+    return construireSilhouetteHumaine({
+      genre,
+      couleurHaut: couleurTenue,
+      couleurBas: genre === "homme" ? 0x33302a : couleurTenue,
+      couleurMotif: 0xffffff,
+      couleurPeau,
+      detaille: false,
+    }).groupe;
+  }
+
+  // --- FOYER (feu de camp à côté des cases) -------------------------------
+  // Retourne un groupe Three.js ; l'état allumé/éteint et la flamme animée
+  // sont gérés par la classe `Foyer` (instanciée dans main()), qui reçoit
+  // ce groupe en paramètre. Ici on ne construit que le décor statique
+  // (cercle de pierres + bois), ajouté à `this.foyers` pour être retrouvé.
+  _genererFoyer(foyerData, zone) {
+    const groupe = new THREE.Group();
+    groupe.name = `Foyer_${foyerData.id}`;
+    const h = this.obtenirHauteurSol(foyerData.position.x, foyerData.position.z);
+
+    const materiauPierre = new THREE.MeshStandardMaterial({ color: 0x7a7468, roughness: 1 });
+    const nbPierres = 7;
+    for (let i = 0; i < nbPierres; i++) {
+      const angle = (i / nbPierres) * Math.PI * 2;
+      const pierre = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), materiauPierre);
+      pierre.position.set(Math.cos(angle) * 0.55, 0.1, Math.sin(angle) * 0.55);
+      pierre.castShadow = true;
+      groupe.add(pierre);
+    }
+
+    const materiauBois = new THREE.MeshStandardMaterial({ color: 0x4a3420, roughness: 1 });
+    for (let i = 0; i < 4; i++) {
+      const buche = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.6, 6), materiauBois);
+      buche.rotation.z = Math.PI / 2;
+      buche.rotation.y = (i / 4) * Math.PI;
+      buche.position.y = 0.08;
+      groupe.add(buche);
+    }
+
+    groupe.position.set(foyerData.position.x, h, foyerData.position.z);
+    groupe.userData = { foyerId: foyerData.id, zoneId: zone.id };
+
+    this.foyers.push({ id: foyerData.id, groupe, zoneId: zone.id, position: new THREE.Vector3(foyerData.position.x, h, foyerData.position.z) });
+    return groupe;
+  }
+
+  // --- AIRE DE COUTUME (chaque tribu) --------------------------------------
+  // Structure scénique STATIQUE représentant le lieu où se dérouleraient les
+  // futurs événements de vie (mariage, naissance, deuil), rythmés par la
+  // parole et le geste (coutume). Purement décorative à ce stade : aucune
+  // cérémonie n'est simulée ni déclenchée ici (réservé à un module futur).
+  _genererAireCoutume(zone) {
+    const groupe = new THREE.Group();
+    const pos = zone.centre;
+    const h = this.obtenirHauteurSol(pos.x, pos.z);
+
+    // Natte tressée au sol (texture générée par canvas — motif géométrique
+    // générique, pas la reproduction d'un tissage précis).
+    const natte = new THREE.Mesh(
+      new THREE.CircleGeometry(2.6, 24),
+      new THREE.MeshStandardMaterial({ map: this._genererTextureNatte(), roughness: 0.9 })
+    );
+    natte.rotation.x = -Math.PI / 2;
+    natte.position.set(pos.x, h + 0.04, pos.z);
+    natte.receiveShadow = true;
+    groupe.add(natte);
+
+    // Pile de tissus pliés (évoque les étoffes offertes lors des échanges
+    // coutumiers), couleurs variées et sobres.
+    const couleursTissus = [0xb5763a, 0xd1477a, 0xe0a62b, 0x3b4a7a];
+    couleursTissus.forEach((couleur, i) => {
+      const pli = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.12, 0.6),
+        new THREE.MeshStandardMaterial({ color: couleur, roughness: 0.85 })
+      );
+      pli.position.set(pos.x + 1.4, h + 0.1 + i * 0.13, pos.z - 1.2);
+      pli.rotation.y = 0.15 * i;
+      pli.castShadow = true;
+      groupe.add(pli);
+    });
+
+    // Deux poteaux de bambou stylisés encadrant l'aire.
+    const materiauBambou = new THREE.MeshStandardMaterial({ color: 0xb8a95f, roughness: 0.7 });
+    [-2.4, 2.4].forEach((dx) => {
+      const poteau = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.2, 8), materiauBambou);
+      poteau.position.set(pos.x + dx, h + 1.1, pos.z + 1.6);
+      poteau.castShadow = true;
+      groupe.add(poteau);
+    });
+
+    groupe.userData = { estAireCoutume: true, zoneId: zone.id, reserveFuturModule: "coutume/dialogue" };
+    return groupe;
+  }
+
+  // Texture procédurale simple évoquant une natte tressée (motif géométrique
+  // générique dessiné sur canvas, aucune image existante utilisée).
+  _genererTextureNatte() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#c7a765";
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = "rgba(90,60,20,0.35)";
+    ctx.lineWidth = 2;
+    for (let i = -128; i < 256; i += 10) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 128, 128); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(i, 128); ctx.lineTo(i + 128, 0); ctx.stroke();
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    return texture;
   }
 
   // Parcelle de plantation : carré de terre labourée + petite clôture basse.
@@ -869,6 +1327,165 @@ class TerrainBuilder {
 
 
 /* ==========================================================================
+   3bis. SILHOUETTE HUMAINE — construireSilhouetteHumaine (module 2)
+   ==========================================================================
+   Fabrique un gabarit humanoïde low-poly stylisé (tête, cou, torse, bras,
+   jambes ou jupe) PARTAGÉ entre le personnage jouable et les silhouettes
+   de décor (villageois), pour que tout le monde ait une vraie forme
+   humaine (et non un simple bloc/capsule). Les vêtements (robe/chemise)
+   suivent la coupe des tenues de référence : jupe évasée à volants pour
+   les robes, manches courtes, chemise + pantalon pour les tenues
+   masculines — formes ORIGINALES inspirées du style, jamais copiées.
+
+   Retourne { groupe, materiauPeau, materiauHaut, materiauBas, materiauMotif }
+   afin que `Personnage` puisse retexturer dynamiquement la tenue déjà
+   construite (changement de couleur en direct) et que la peau reste un
+   matériau unique, modifiable sans tout reconstruire.
+   ========================================================================== */
+
+function construireSilhouetteHumaine({ genre, couleurHaut, couleurBas, couleurMotif, couleurPeau, detaille = true }) {
+  const groupe = new THREE.Group();
+
+  const materiauPeau = new THREE.MeshStandardMaterial({ color: couleurPeau, roughness: 0.7 });
+  const materiauHaut = new THREE.MeshStandardMaterial({ color: couleurHaut, roughness: 0.75 });
+  const materiauBas = new THREE.MeshStandardMaterial({ color: couleurBas, roughness: 0.78 });
+  const materiauMotif = new THREE.MeshStandardMaterial({ color: couleurMotif, roughness: 0.75 });
+
+  const ombres = (mesh) => { mesh.castShadow = true; return mesh; };
+
+  // --- Pieds ---------------------------------------------------------------
+  [-0.14, 0.14].forEach((dx) => {
+    const pied = ombres(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.22), materiauPeau));
+    pied.position.set(dx, 0.04, 0.03);
+    groupe.add(pied);
+  });
+
+  // --- Jambes (visibles pour les tenues masculines ; cachées par la jupe
+  //     pour les tenues féminines, conformément à la coupe longue des robes).
+  if (genre === "homme") {
+    [-0.14, 0.14].forEach((dx) => {
+      const jambe = ombres(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.85, 8), materiauBas));
+      jambe.position.set(dx, 0.5, 0);
+      groupe.add(jambe);
+    });
+  }
+
+  // --- Torse -----------------------------------------------------------
+  const torse = ombres(new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.18, 4, 8), materiauHaut));
+  torse.position.y = 1.22;
+  groupe.add(torse);
+
+  // --- Jupe évasée (robe) avec volants, ou ceinture (pantalon) ------------
+  if (genre === "femme") {
+    const jupe = ombres(new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.85, 14, 1, true), materiauHaut));
+    jupe.position.y = 0.93 - 0.425;
+    groupe.add(jupe);
+    // Volants (tiers superposés), inspirés des robes à volants du Pacifique.
+    [{ y: 0.46, r: 0.38 }, { y: 0.22, r: 0.46 }, { y: 0.07, r: 0.53 }].forEach(({ y, r }) => {
+      const volant = ombres(new THREE.Mesh(new THREE.TorusGeometry(r, 0.055, 6, 18), materiauMotif));
+      volant.position.y = y;
+      volant.rotation.x = Math.PI / 2;
+      groupe.add(volant);
+    });
+  } else {
+    const ceinture = ombres(new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.04, 6, 14), materiauMotif));
+    ceinture.position.y = 0.95;
+    ceinture.rotation.x = Math.PI / 2;
+    groupe.add(ceinture);
+  }
+
+  // --- Cou et tête ---------------------------------------------------------
+  const cou = ombres(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.12, 8), materiauPeau));
+  cou.position.y = 1.56;
+  groupe.add(cou);
+
+  const tete = ombres(new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), materiauPeau));
+  tete.position.y = 1.78;
+  groupe.add(tete);
+
+  // --- Bras (manche courte + avant-bras + main) ---------------------------
+  [-1, 1].forEach((cote) => {
+    const groupeB = new THREE.Group();
+    const manche = ombres(new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.09, 0.22, 8), materiauHaut));
+    manche.position.y = 1.32;
+    groupeB.add(manche);
+    const avantBras = ombres(new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.07, 0.4, 8), materiauPeau));
+    avantBras.position.y = 1.0;
+    groupeB.add(avantBras);
+    const main = ombres(new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), materiauPeau));
+    main.position.y = 0.78;
+    groupeB.add(main);
+    groupeB.position.x = cote * 0.3;
+    groupeB.rotation.z = cote * -0.1; // léger écartement naturel
+    groupe.add(groupeB);
+  });
+
+  // Détails décoratifs optionnels (personnage jouable uniquement, pour
+  // limiter le nombre de triangles des silhouettes de décor) : col, et un
+  // petit pendentif frontal qui sert aussi de repère visuel d'orientation
+  // (le reste du gabarit étant symétrique avant/arrière).
+  if (detaille) {
+    const col = ombres(new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.035, 6, 12), materiauMotif));
+    col.position.y = 1.44;
+    col.rotation.x = Math.PI / 2;
+    groupe.add(col);
+
+    const pendentif = ombres(new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), materiauMotif));
+    pendentif.position.set(0, 1.36, 0.23);
+    groupe.add(pendentif);
+  }
+
+  return { groupe, materiauPeau, materiauHaut, materiauBas, materiauMotif };
+}
+
+
+/* ==========================================================================
+   3ter. FOYER — Foyer (module 2)
+   ==========================================================================
+   Gère l'état allumé/éteint d'un feu de camp généré par `TerrainBuilder`,
+   avec une flamme animée (cône + lumière ponctuelle) et une extinction
+   automatique au lever du jour — le joueur doit le rallumer chaque soir.
+   ========================================================================== */
+
+class Foyer {
+  constructor(donneesFoyer) {
+    this.id = donneesFoyer.id;
+    this.position = donneesFoyer.position;
+    this.estAllume = false;
+    this._age = 0;
+
+    const materiauFlamme = new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0 });
+    this.flamme = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.5, 8), materiauFlamme);
+    this.flamme.position.set(0, 0.25, 0);
+    donneesFoyer.groupe.add(this.flamme);
+
+    this.lumiere = new THREE.PointLight(0xff8a3c, 0, 5, 2);
+    this.lumiere.position.set(0, 0.4, 0);
+    donneesFoyer.groupe.add(this.lumiere);
+  }
+
+  allumer() { this.estAllume = true; }
+  eteindre() { this.estAllume = false; }
+
+  // Portée d'interaction (distance au joueur pour pouvoir allumer/éteindre).
+  get rayonInteraction() { return 3.0; }
+
+  update(dt) {
+    this._age += dt;
+    const cible = this.estAllume ? 1 : 0;
+    this.flamme.material.opacity = THREE.MathUtils.lerp(this.flamme.material.opacity, cible, Math.min(1, dt * 4));
+    this.lumiere.intensity = THREE.MathUtils.lerp(this.lumiere.intensity, cible * 1.6, Math.min(1, dt * 4));
+    if (this.estAllume) {
+      // Scintillement léger pour suggérer le mouvement de la flamme.
+      const scintillement = 1 + Math.sin(this._age * 12) * 0.08 + Math.sin(this._age * 23) * 0.05;
+      this.flamme.scale.set(scintillement, scintillement, scintillement);
+      this.lumiere.intensity *= scintillement;
+    }
+  }
+}
+
+
+/* ==========================================================================
    4. PERSONNAGE JOUABLE — Personnage
    ==========================================================================
    Silhouette low-poly générique (capsule + tête), déplacement au clavier,
@@ -885,28 +1502,7 @@ class Personnage {
 
     this.groupe = new THREE.Group();
     this.groupe.name = "Personnage";
-
-    // Corps : capsule stylisée (silhouette neutre, sans trait culturel/visage).
-    const materiauCorps = new THREE.MeshStandardMaterial({ color: 0x3a6ea8, roughness: 0.6 });
-    const corps = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.0, 4, 10), materiauCorps);
-    corps.position.y = 1.0;
-    corps.castShadow = true;
-    this.groupe.add(corps);
-
-    const materiauTete = new THREE.MeshStandardMaterial({ color: 0xd8a878, roughness: 0.7 });
-    const tete = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), materiauTete);
-    tete.position.y = 1.85;
-    tete.castShadow = true;
-    this.groupe.add(tete);
-
-    // Petit indicateur de direction (pour vérifier visuellement l'orientation).
-    const indicateur = new THREE.Mesh(
-      new THREE.ConeGeometry(0.12, 0.3, 6),
-      new THREE.MeshStandardMaterial({ color: 0xe8b84b })
-    );
-    indicateur.position.set(0, 1.0, 0.55);
-    indicateur.rotation.x = Math.PI / 2;
-    this.groupe.add(indicateur);
+    this.scene = scene;
 
     this.groupe.position.set(2, 0, 10);
     scene.add(this.groupe);
@@ -917,9 +1513,53 @@ class Personnage {
     this.touches = {};
     window.addEventListener("keydown", (e) => { this.touches[e.key.toLowerCase()] = true; });
     window.addEventListener("keyup", (e) => { this.touches[e.key.toLowerCase()] = false; });
+
+    // Tenue et teinte de peau par défaut.
+    this.genre = "femme";
+    this.indexTenue = 0;
+    this.indexPeau = 1;
+    this.definirTenue(this.genre, this.indexTenue);
   }
 
   get position() { return this.groupe.position; }
+
+  // --- PERSONNALISATION (module 2) ----------------------------------------
+  // Reconstruit entièrement la silhouette (gabarit humanoïde partagé —
+  // `construireSilhouetteHumaine`) avec la couleur/motif de la tenue choisie
+  // dans `MondeData.garderobe`. Jupe à volants pour les robes, chemise +
+  // pantalon pour les tenues masculines. Couleurs et motifs sont génériques
+  // et procéduraux : aucune photo ni tissu réel n'est reproduit.
+  definirTenue(genre, index) {
+    const liste = genre === "homme" ? MondeData.garderobe.hommes : MondeData.garderobe.femmes;
+    const tenue = liste[THREE.MathUtils.clamp(index, 0, liste.length - 1)];
+    this.genre = genre;
+    this.indexTenue = index;
+    this.tenueActuelle = tenue;
+
+    const teintePeau = MondeData.garderobe.teintesPeau[this.indexPeau ?? 1];
+
+    if (this.groupeSilhouette) this.groupe.remove(this.groupeSilhouette);
+
+    const silhouette = construireSilhouetteHumaine({
+      genre,
+      couleurHaut: tenue.couleur,
+      couleurBas: genre === "homme" ? 0x33302a : tenue.couleur,
+      couleurMotif: tenue.motif,
+      couleurPeau: teintePeau,
+      detaille: true,
+    });
+    this.groupeSilhouette = silhouette.groupe;
+    this.materiauPeau = silhouette.materiauPeau; // conservé pour `definirTeintePeau`
+    this.groupe.add(this.groupeSilhouette);
+  }
+
+  // Teinte de peau générique (aucun visage détaillé n'est associé) :
+  // applicable en direct sur le matériau partagé, sans tout reconstruire.
+  definirTeintePeau(index) {
+    const teintes = MondeData.garderobe.teintesPeau;
+    this.indexPeau = THREE.MathUtils.clamp(index, 0, teintes.length - 1);
+    if (this.materiauPeau) this.materiauPeau.color.setHex(teintes[this.indexPeau]);
+  }
 
   update(dt) {
     const avance = (this.touches["w"] || this.touches["arrowup"]) ? 1 : 0;
@@ -955,7 +1595,162 @@ class Personnage {
 
 
 /* ==========================================================================
-   5. BOUCLE DE JEU — main()
+   5. AMBIANCE SONORE — AmbianceSonore (module 2)
+   ==========================================================================
+   Musique d'ambiance "vibes Pacifique Sud" générée ENTIÈREMENT en direct par
+   la Web Audio API (nappe d'accords chauds, pincements façon ukulélé sur
+   gamme pentatonique, bruit de ressac filtré). AUCUN fichier audio externe :
+   donc aucune question de droits d'auteur — tout est synthétisé.
+   Le son ne démarre qu'après un geste explicite de l'utilisateur (clic sur
+   le bouton musique), conformément aux politiques des navigateurs.
+   ========================================================================== */
+
+class AmbianceSonore {
+  constructor() {
+    this.contexte = null;
+    this.actif = false;
+    this.estCoupe = false;
+  }
+
+  _creerContexte() {
+    if (this.contexte) return;
+    const ContexteAudio = window.AudioContext || window.webkitAudioContext;
+    this.contexte = new ContexteAudio();
+
+    this.gainMaitre = this.contexte.createGain();
+    this.gainMaitre.gain.value = 0.32;
+    this.gainMaitre.connect(this.contexte.destination);
+
+    this._creerNappeAccords();
+    this._creerRessac();
+    this._planifierPincements();
+  }
+
+  // Nappe d'accords lents et chauds (triangle + filtre passe-bas), qui
+  // changent toutes les ~9 secondes pour une ambiance de lagon paisible.
+  _creerNappeAccords() {
+    this.accords = [
+      [196.00, 246.94, 293.66], // Sol majeur
+      [174.61, 220.00, 261.63], // Fa majeur
+      [220.00, 261.63, 329.63], // La mineur
+      [164.81, 196.00, 246.94], // Mi mineur
+    ];
+    this.indexAccord = 0;
+
+    const filtre = this.contexte.createBiquadFilter();
+    filtre.type = "lowpass";
+    filtre.frequency.value = 850;
+    filtre.connect(this.gainMaitre);
+
+    this.oscillateursNappe = this.accords[0].map((freq) => {
+      const osc = this.contexte.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = freq;
+      const gain = this.contexte.createGain();
+      gain.gain.value = 0;
+      osc.connect(gain);
+      gain.connect(filtre);
+      osc.start();
+      gain.gain.linearRampToValueAtTime(0.085, this.contexte.currentTime + 3);
+      return { osc, gain };
+    });
+
+    this._intervalAccord = setInterval(() => {
+      this.indexAccord = (this.indexAccord + 1) % this.accords.length;
+      const nouvellesFreq = this.accords[this.indexAccord];
+      const maintenant = this.contexte.currentTime;
+      this.oscillateursNappe.forEach((o, i) => {
+        o.osc.frequency.linearRampToValueAtTime(nouvellesFreq[i], maintenant + 2.5);
+      });
+    }, 9000);
+  }
+
+  // Bruit de ressac doux : bruit brownien filtré, en boucle.
+  _creerRessac() {
+    const duree = 2;
+    const taille = Math.floor(this.contexte.sampleRate * duree);
+    const buffer = this.contexte.createBuffer(1, taille, this.contexte.sampleRate);
+    const donnees = buffer.getChannelData(0);
+    let dernier = 0;
+    for (let i = 0; i < taille; i++) {
+      const blanc = Math.random() * 2 - 1;
+      dernier = (dernier + 0.02 * blanc) / 1.02;
+      donnees[i] = dernier * 3.2;
+    }
+    const source = this.contexte.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+
+    const filtre = this.contexte.createBiquadFilter();
+    filtre.type = "lowpass";
+    filtre.frequency.value = 450;
+
+    const gain = this.contexte.createGain();
+    gain.gain.value = 0.045;
+
+    source.connect(filtre);
+    filtre.connect(gain);
+    gain.connect(this.gainMaitre);
+    source.start();
+  }
+
+  // Petites notes pincées (évoquant un ukulélé), gamme pentatonique,
+  // déclenchées à intervalles aléatoires pour une ambiance vivante et légère.
+  _planifierPincements() {
+    const gamme = [392.00, 440.00, 523.25, 587.33, 659.25, 783.99];
+
+    const jouerNote = () => {
+      if (!this.estCoupe) {
+        const freq = gamme[Math.floor(Math.random() * gamme.length)];
+        const maintenant = this.contexte.currentTime;
+        const osc = this.contexte.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.value = freq;
+
+        const gain = this.contexte.createGain();
+        gain.gain.setValueAtTime(0, maintenant);
+        gain.gain.linearRampToValueAtTime(0.055, maintenant + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, maintenant + 1.4);
+
+        osc.connect(gain);
+        if (this.contexte.createStereoPanner) {
+          const pan = this.contexte.createStereoPanner();
+          pan.pan.value = (Math.random() - 0.5) * 0.8;
+          gain.connect(pan);
+          pan.connect(this.gainMaitre);
+        } else {
+          gain.connect(this.gainMaitre);
+        }
+        osc.start(maintenant);
+        osc.stop(maintenant + 1.5);
+      }
+      setTimeout(jouerNote, 2500 + Math.random() * 4000);
+    };
+    setTimeout(jouerNote, 1500);
+  }
+
+  // Démarre l'ambiance (doit être appelé depuis un geste utilisateur — clic
+  // ou touche — pour respecter les politiques de lecture audio automatique).
+  demarrer() {
+    this._creerContexte();
+    if (this.contexte.state === "suspended") this.contexte.resume();
+    this.actif = true;
+    this.estCoupe = false;
+  }
+
+  // Coupe/réactive le son sans tout reconstruire. Retourne l'état courant.
+  basculer() {
+    if (!this.actif) { this.demarrer(); return !this.estCoupe; }
+    this.estCoupe = !this.estCoupe;
+    const cible = this.estCoupe ? 0 : 0.32;
+    this.gainMaitre.gain.linearRampToValueAtTime(cible, this.contexte.currentTime + 0.4);
+    return !this.estCoupe;
+  }
+}
+
+
+/* ==========================================================================
+   6. BOUCLE DE JEU — main()
    ==========================================================================
    Assemble les modules précédents, gère la caméra suiveuse (orbitale
    autour du personnage via OrbitControls), détecte la zone courante pour
@@ -966,6 +1761,9 @@ function main() {
   const sceneManager = new SceneManager(document.body);
   const terrain = new TerrainBuilder(sceneManager.scene);
   const personnage = new Personnage(sceneManager.scene, terrain.obtenirHauteurSol);
+
+  // Instanciation des foyers (module 2) à partir du décor généré.
+  const foyers = terrain.foyers.map((f) => new Foyer(f));
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -983,6 +1781,8 @@ function main() {
 
   const hudZoneNom = document.getElementById("hud-zone-nom");
   const hudZoneFlottant = document.getElementById("hud-zone");
+  const hudHeure = document.getElementById("hud-heure");
+  const hudInteraction = document.getElementById("hud-interaction");
   let zoneActuelleId = null;
 
   function detecterZoneCourante() {
@@ -1002,6 +1802,182 @@ function main() {
     }
   }
 
+  function formaterHeure(h) {
+    const heures = Math.floor(h).toString().padStart(2, "0");
+    const minutes = Math.floor((h % 1) * 60).toString().padStart(2, "0");
+    return `${heures}h${minutes}`;
+  }
+
+  /* ========================================================================
+     SYSTÈME D'INTERACTION (module 2) — touche E
+     ========================================================================
+     Cherche l'élément interactif le plus proche du personnage (foyer à
+     allumer la nuit, conque à sonner) et affiche une invite contextuelle.
+     Conçu pour être étendu facilement par de futurs modules (commerce,
+     dialogue) : il suffit d'ajouter une entrée à `cibleCourante`.
+     ======================================================================== */
+  let cibleCourante = null; // { type: "foyer"|"conque", action: fn, libelle: string }
+  let rassemblementActif = false;
+  let rassemblementMinuteur = 0;
+
+  function mettreAJourInteractionDisponible() {
+    cibleCourante = null;
+    const pos = personnage.position;
+
+    // Foyer le plus proche, la nuit uniquement (de jour, rien à allumer).
+    if (sceneManager.estNuit) {
+      for (const foyer of foyers) {
+        if (foyer.position.distanceTo(pos) <= foyer.rayonInteraction) {
+          cibleCourante = {
+            libelle: foyer.estAllume
+              ? "E : éteindre le foyer"
+              : "E : allumer le foyer (éloigner les mauvais esprits de la nuit)",
+            action: () => (foyer.estAllume ? foyer.eteindre() : foyer.allumer()),
+          };
+          break;
+        }
+      }
+    }
+
+    // Aire de rassemblement (conque), si rien de plus proche n'a été trouvé.
+    if (!cibleCourante) {
+      for (const aire of terrain.airesRassemblement) {
+        if (aire.position.distanceTo(pos) <= 4.5 && !rassemblementActif) {
+          cibleCourante = {
+            libelle: "E : sonner la conque pour rassembler le village",
+            action: () => declencherRassemblement(),
+          };
+          break;
+        }
+      }
+    }
+
+    hudInteraction.classList.toggle("visible", !!cibleCourante);
+    hudInteraction.textContent = cibleCourante ? cibleCourante.libelle : "";
+  }
+
+  // Déclenche un rassemblement communautaire NEUTRE (affaires courantes,
+  // conflits de voisinage) : les silhouettes de décor convergent vers l'aire
+  // de rassemblement puis repartent après quelques secondes. Aucun sujet
+  // politique ou dramatique n'est traité (voir cahier des charges).
+  function declencherRassemblement() {
+    rassemblementActif = true;
+    rassemblementMinuteur = 8; // secondes
+    hudZoneFlottant.textContent = "Le village se rassemble pour régler une affaire courante…";
+    hudZoneFlottant.classList.add("visible");
+  }
+
+  function mettreAJourRassemblement(dt) {
+    if (rassemblementActif) {
+      rassemblementMinuteur -= dt;
+      if (rassemblementMinuteur <= 0) {
+        rassemblementActif = false;
+        hudZoneFlottant.classList.remove("visible");
+      }
+    }
+    terrain.villageoisDecor.forEach((silhouette) => {
+      const cible = rassemblementActif
+        ? silhouette.userData.positionRassemblement
+        : silhouette.userData.positionRepos;
+      silhouette.position.lerp(cible, Math.min(1, dt * 1.5));
+    });
+  }
+
+  /* ========================================================================
+     VUE AÉRIENNE (module 2) — touche V
+     ========================================================================
+     Bascule entre la caméra suiveuse habituelle et une vue du dessus
+     centrée sur la carte, pour observer l'étendue des plantations, des
+     tribus et du littoral. OrbitControls reste actif dans les deux modes
+     (orbite/zoom manuel), seule la logique de recentrage automatique change.
+     ======================================================================== */
+  let vueAerienneActive = false;
+  const cibleVueAerienne = new THREE.Vector3(0, 0, 40);
+  const positionCameraAerienne = new THREE.Vector3(0, 150, 110);
+
+  function basculerVueAerienne() {
+    vueAerienneActive = !vueAerienneActive;
+    controles.maxPolarAngle = vueAerienneActive ? Math.PI * 0.499 : Math.PI * 0.49;
+  }
+
+  /* ========================================================================
+     PERSONNALISATION (module 2) — touche I / bouton "Tenue"
+     ======================================================================== */
+  const boutonTenue = document.getElementById("bouton-tenue");
+  const panneauTenue = document.getElementById("panneau-tenue");
+  const boutonGenreFemme = document.getElementById("genre-femme");
+  const boutonGenreHomme = document.getElementById("genre-homme");
+  const grilleTenues = document.getElementById("grille-tenues");
+  const grillePeau = document.getElementById("grille-peau");
+
+  function construireSwatchesTenues() {
+    grilleTenues.innerHTML = "";
+    const liste = personnage.genre === "homme" ? MondeData.garderobe.hommes : MondeData.garderobe.femmes;
+    liste.forEach((tenue, i) => {
+      const swatch = document.createElement("div");
+      swatch.className = "swatch" + (i === personnage.indexTenue ? " actif" : "");
+      swatch.style.background = `#${tenue.couleur.toString(16).padStart(6, "0")}`;
+      swatch.title = tenue.nom;
+      swatch.addEventListener("click", () => {
+        personnage.definirTenue(personnage.genre, i);
+        construireSwatchesTenues();
+      });
+      grilleTenues.appendChild(swatch);
+    });
+  }
+
+  function construireSwatchesPeau() {
+    grillePeau.innerHTML = "";
+    MondeData.garderobe.teintesPeau.forEach((teinte, i) => {
+      const swatch = document.createElement("div");
+      swatch.className = "swatch" + (i === personnage.indexPeau ? " actif" : "");
+      swatch.style.background = `#${teinte.toString(16).padStart(6, "0")}`;
+      swatch.addEventListener("click", () => {
+        personnage.definirTeintePeau(i);
+        construireSwatchesPeau();
+      });
+      grillePeau.appendChild(swatch);
+    });
+  }
+
+  function basculerPanneauTenue() {
+    panneauTenue.classList.toggle("visible");
+  }
+
+  // --- Musique d'ambiance (module 2) --------------------------------------
+  const ambiance = new AmbianceSonore();
+  const boutonMusique = document.getElementById("bouton-musique");
+  boutonMusique.addEventListener("click", () => {
+    const enMarche = ambiance.basculer();
+    boutonMusique.textContent = enMarche ? "🎵 Musique" : "🔇 Musique";
+    boutonMusique.classList.toggle("actif", enMarche);
+  });
+
+  boutonTenue.addEventListener("click", basculerPanneauTenue);
+  boutonGenreFemme.addEventListener("click", () => {
+    personnage.definirTenue("femme", 0);
+    boutonGenreFemme.classList.add("actif");
+    boutonGenreHomme.classList.remove("actif");
+    construireSwatchesTenues();
+  });
+  boutonGenreHomme.addEventListener("click", () => {
+    personnage.definirTenue("homme", 0);
+    boutonGenreHomme.classList.add("actif");
+    boutonGenreFemme.classList.remove("actif");
+    construireSwatchesTenues();
+  });
+  construireSwatchesTenues();
+  construireSwatchesPeau();
+
+  // Touches globales non liées au déplacement (E, V, I) — distinctes du
+  // système `personnage.touches` qui gère uniquement les déplacements continus.
+  window.addEventListener("keydown", (e) => {
+    const touche = e.key.toLowerCase();
+    if (touche === "e" && cibleCourante) cibleCourante.action();
+    if (touche === "v") basculerVueAerienne();
+    if (touche === "i") basculerPanneauTenue();
+  });
+
   // --- Vérification post-chargement : masque l'écran de chargement --------
   const ecranChargement = document.getElementById("ui-chargement");
   const barreInterne = document.getElementById("barre-interne");
@@ -1016,21 +1992,44 @@ function main() {
   // --- Avertissement de performance simple (nombre de triangles élevé) ----
   const infosRenderer = sceneManager.renderer.info;
 
+  // Suit les transitions nuit->jour pour éteindre automatiquement les
+  // foyers restés allumés (ils doivent être rallumés chaque soir).
+  let etaitNuit = false;
+
   function boucleAnimation() {
     const dt = Math.min(sceneManager.horloge.getDelta(), 0.05);
 
     personnage.update(dt);
+    sceneManager.mettreAJourCycleJourNuit(dt);
+    foyers.forEach((f) => f.update(dt));
+    mettreAJourRassemblement(dt);
+    mettreAJourInteractionDisponible();
 
-    // La cible des OrbitControls suit le personnage ; la position de la
-    // caméra reste gérée par l'utilisateur (orbite/zoom), sauf déplacement
-    // du personnage qui translate l'ensemble pour garder le cadrage.
-    const decalageCamera = sceneManager.camera.position.clone().sub(controles.target);
-    controles.target.lerp(personnage.position.clone().add(new THREE.Vector3(0, 1.4, 0)), Math.min(1, dt * 4));
-    sceneManager.camera.position.copy(controles.target).add(decalageCamera);
+    if (etaitNuit && !sceneManager.estNuit) {
+      foyers.forEach((f) => f.eteindre()); // extinction automatique à l'aube
+    }
+    etaitNuit = sceneManager.estNuit;
+
+    if (vueAerienneActive) {
+      // Vue du dessus : la caméra et la cible se figent au-dessus du centre
+      // de la carte (l'utilisateur garde la main via OrbitControls).
+      controles.target.lerp(cibleVueAerienne, Math.min(1, dt * 2));
+      sceneManager.camera.position.lerp(
+        controles.target.clone().add(positionCameraAerienne), Math.min(1, dt * 2)
+      );
+    } else {
+      // Caméra suiveuse : la cible des OrbitControls suit le personnage ;
+      // la position de la caméra reste gérée par l'utilisateur (orbite/zoom),
+      // sauf déplacement du personnage qui translate l'ensemble.
+      const decalageCamera = sceneManager.camera.position.clone().sub(controles.target);
+      controles.target.lerp(personnage.position.clone().add(new THREE.Vector3(0, 1.4, 0)), Math.min(1, dt * 4));
+      sceneManager.camera.position.copy(controles.target).add(decalageCamera);
+    }
 
     controles.update();
 
     detecterZoneCourante();
+    hudHeure.textContent = formaterHeure(sceneManager.tempsJeu) + (sceneManager.estNuit ? " 🌙" : " ☀️");
 
     sceneManager.renderer.render(sceneManager.scene, sceneManager.camera);
     requestAnimationFrame(boucleAnimation);

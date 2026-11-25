@@ -19,8 +19,9 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
      ```
      puis ouvre l'URL affichée.
 
-## 🗺️ Contenu actuel (Module 1 — fondations)
+## 🗺️ Contenu actuel
 
+**Module 1 — fondations**
 - Scène 3D complète (terrain avec relief, ciel dynamique, eau, éclairage
   tropical chaud).
 - Trois types de zones : **village** (commerces), **tribus** (habitations),
@@ -30,6 +31,23 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
 - Architecture de données extensible (`MondeData`) prête à accueillir les
   modules suivants : cultures, économie, population/PNJ, dialogues et
   événements.
+
+**Module 2 — ambiance culturelle, vue aérienne et personnalisation**
+- Cycle jour/nuit (ciel, lumière, étoiles).
+- Foyers à allumer la nuit à côté des cases (touche **E** à proximité).
+- Aire de rassemblement au village : sonner la conque (**E**) déclenche un
+  rassemblement communautaire neutre (affaires courantes, conflits de
+  voisinage — aucun sujet politique réel n'est traité).
+- Aire de coutume dans chaque tribu : lieu scénique statique réservé aux
+  futurs événements de vie (mariage, naissance, deuil).
+- Vue aérienne basculable (touche **V**) pour observer l'étendue des
+  plantations et des tribus près du littoral.
+- Personnalisation du personnage (bouton **👕 Tenue** / touche **I**) :
+  genre, plusieurs tenues (robes à volants / chemises), teinte de peau —
+  silhouettes humanoïdes génériques, sans visage détaillé.
+- Musique d'ambiance "vibes Pacifique Sud" **entièrement synthétisée** en
+  direct par la Web Audio API (bouton **🎵 Musique**) : aucun fichier audio
+  externe, donc aucun risque de droits d'auteur.
 
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
