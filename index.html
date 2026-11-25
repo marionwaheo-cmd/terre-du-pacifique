@@ -207,6 +207,19 @@ traduite en géométries/matériaux Three.js originaux.
     fichier audio, donc jamais de droits d'auteur) pour planter, récolter,
     encaisser, et signaler une erreur (pas assez d'argent, etc.), sur son
     propre `AudioContext` créé au premier geste du joueur.
+
+----------------------------------------------------------------------------
+ MODULE 8 — CONTRÔLES TACTILES (MOBILE/TABLETTE)
+----------------------------------------------------------------------------
+  - Détection tactile (`"ontouchstart" in window`) : si positive, un
+    joystick virtuel (bas gauche) et un bouton d'action rond "E" (bas
+    droite) apparaissent, superposés au reste de l'interface.
+  - Le joystick alimente `Personnage.entreeTactile` ({x, z} dans [-1, 1]),
+    prioritaire sur le clavier dans `Personnage.update`. Le bouton d'action
+    déclenche exactement la même logique que la touche E.
+  - OrbitControls gère nativement le reste de l'écran au tactile (un doigt
+    glissé = orbite, deux doigts = zoom), sans conflit avec le joystick
+    puisque celui-ci capture son propre pointeur (`setPointerCapture`).
 ============================================================================
 -->
 
@@ -510,6 +523,50 @@ traduite en géométries/matériaux Three.js originaux.
   .bouton-titre:hover { background: rgba(255,255,255,0.14); }
   .bouton-titre-principal { background: var(--couleur-accent); color: #1c2a1c; font-weight: bold; }
   .bouton-titre-principal:hover { background: #f0c868; }
+
+  /* --- Contrôles tactiles (module 8) ------------------------------------
+     Masqués par défaut ; révélés sur appareil tactile via la classe
+     "tactile-actif" posée sur <body>. */
+  #joystick-base, #bouton-action-tactile { display: none; touch-action: none; }
+  body.tactile-actif #joystick-base, body.tactile-actif #bouton-action-tactile { display: flex; }
+
+  #joystick-base {
+    position: fixed;
+    left: 24px;
+    bottom: 110px;
+    width: 104px;
+    height: 104px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: 2px solid rgba(255,255,255,0.25);
+    align-items: center;
+    justify-content: center;
+    z-index: 25;
+  }
+  #joystick-stick {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--couleur-accent);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+  #bouton-action-tactile {
+    position: fixed;
+    right: 24px;
+    bottom: 120px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--couleur-fond-ui);
+    border: 2px solid var(--couleur-accent);
+    color: var(--couleur-accent);
+    font-size: 1.1rem;
+    font-weight: bold;
+    align-items: center;
+    justify-content: center;
+    z-index: 25;
+  }
 </style>
 </head>
 <body>
@@ -570,6 +627,15 @@ traduite en géométries/matériaux Three.js originaux.
   <h3>Choisir une culture</h3>
   <div id="grille-plantation"></div>
 </div>
+
+<!-- Contrôles tactiles (module 8) : affichés uniquement sur appareil tactile
+     (voir `document.body.classList.add("tactile-actif", ...)` dans
+     main()). Le joystick pilote `Personnage.entreeTactile`, le bouton
+     d'action déclenche la même logique que la touche E. -->
+<div id="joystick-base">
+  <div id="joystick-stick"></div>
+</div>
+<button id="bouton-action-tactile">E</button>
 
 <div id="panneau-conflit">
   <h3 id="conflit-titre">Différend</h3>
@@ -1901,6 +1967,7 @@ class Personnage {
     this._vitesseActuelle = new THREE.Vector3();
 
     this.touches = {};
+    this.entreeTactile = { x: 0, z: 0 }; // joystick virtuel (module 8)
     window.addEventListener("keydown", (e) => { this.touches[e.key.toLowerCase()] = true; });
     window.addEventListener("keyup", (e) => { this.touches[e.key.toLowerCase()] = false; });
 
@@ -1958,7 +2025,15 @@ class Personnage {
     const droite = (this.touches["d"] || this.touches["arrowright"]) ? 1 : 0;
 
     this._direction.set(droite - gauche, 0, recule - avance);
-    const enMouvement = this._direction.lengthSq() > 0;
+
+    // Joystick virtuel tactile (module 8) : prend le dessus sur le clavier
+    // dès qu'il est actionné. `entreeTactile` est mis à jour ailleurs
+    // (voir `configurerJoystickTactile` dans main()), { x, z } dans [-1, 1].
+    if (this.entreeTactile && (Math.abs(this.entreeTactile.x) > 0.08 || Math.abs(this.entreeTactile.z) > 0.08)) {
+      this._direction.set(this.entreeTactile.x, 0, this.entreeTactile.z);
+    }
+
+    const enMouvement = this._direction.lengthSq() > 0.0001;
     if (enMouvement) this._direction.normalize();
 
     const vitesseVoulue = this._direction.clone().multiplyScalar(this.vitesseDeplacement);
@@ -3199,6 +3274,63 @@ function main() {
     if (touche === "v") basculerVueAerienne();
     if (touche === "i") basculerPanneauTenue();
   });
+
+  /* ========================================================================
+     CONTRÔLES TACTILES (module 8) — joystick virtuel + bouton d'action
+     ========================================================================
+     Révélés uniquement sur appareil tactile (téléphone/tablette), pour que
+     le jeu reste "jouable directement dans un navigateur" sans clavier.
+     Le joystick alimente `personnage.entreeTactile` ; OrbitControls gère
+     déjà nativement le tactile ailleurs à l'écran (un doigt = orbite, deux
+     doigts = zoom), sans conflit puisque le joystick capture son propre
+     pointeur (`setPointerCapture`).
+     ======================================================================== */
+  const estTactile = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (estTactile) {
+    document.body.classList.add("tactile-actif");
+
+    const joystickBase = document.getElementById("joystick-base");
+    const joystickManche = document.getElementById("joystick-stick");
+    const rayonMax = 40;
+    let pointeurJoystick = null;
+
+    function positionnerManche(dx, dz) {
+      joystickManche.style.transform = `translate(${dx}px, ${dz}px)`;
+    }
+
+    function deplacerJoystick(evt) {
+      const rect = joystickBase.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let dx = evt.clientX - cx;
+      let dz = evt.clientY - cy;
+      const distance = Math.hypot(dx, dz);
+      if (distance > rayonMax) { dx = (dx / distance) * rayonMax; dz = (dz / distance) * rayonMax; }
+      positionnerManche(dx, dz);
+      personnage.entreeTactile = { x: dx / rayonMax, z: dz / rayonMax };
+    }
+
+    joystickBase.addEventListener("pointerdown", (evt) => {
+      pointeurJoystick = evt.pointerId;
+      joystickBase.setPointerCapture(pointeurJoystick);
+      deplacerJoystick(evt);
+    });
+    joystickBase.addEventListener("pointermove", (evt) => {
+      if (evt.pointerId === pointeurJoystick) deplacerJoystick(evt);
+    });
+    const relacherJoystick = (evt) => {
+      if (evt.pointerId !== pointeurJoystick) return;
+      pointeurJoystick = null;
+      personnage.entreeTactile = { x: 0, z: 0 };
+      positionnerManche(0, 0);
+    };
+    joystickBase.addEventListener("pointerup", relacherJoystick);
+    joystickBase.addEventListener("pointercancel", relacherJoystick);
+
+    document.getElementById("bouton-action-tactile").addEventListener("click", () => {
+      if (cibleCourante) cibleCourante.action();
+    });
+  }
 
   // --- Sauvegarde (module 6) ----------------------------------------------
   // La sauvegarde est LUE tout de suite, mais seulement APPLIQUÉE une fois

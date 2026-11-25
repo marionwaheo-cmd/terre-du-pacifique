@@ -103,6 +103,12 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   aucun droit d'auteur) pour planter, récolter, encaisser et signaler
   une erreur.
 
+**Module 8 — contrôles tactiles (mobile/tablette)**
+- Sur appareil tactile : un joystick virtuel (bas gauche) pour se
+  déplacer, et un bouton rond "E" (bas droite) pour interagir.
+- La caméra reste pilotable au tactile nativement (un doigt = orbite,
+  deux doigts = zoom), sans conflit avec le joystick.
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 
