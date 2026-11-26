@@ -1521,9 +1521,11 @@ class TerrainBuilder {
 
     // Sculpture évoquant une vraie conque (voir `construireConque`),
     // posée inclinée sur le socle, ouverture vers le ciel.
-    const conqueStatue = construireConque(1.1);
-    conqueStatue.rotation.z = Math.PI * 0.18;
-    conqueStatue.position.set(pos.x - 0.4, h + 0.35 + 0.3, pos.z);
+    // Plus grande et nettement inclinée (ouverture vers le haut, de biais)
+    // pour rester reconnaissable sous n'importe quel angle d'approche.
+    const conqueStatue = construireConque(1.8);
+    conqueStatue.rotation.set(0.35, Math.PI * 0.15, Math.PI * 0.32);
+    conqueStatue.position.set(pos.x, h + 0.35 + 0.55, pos.z);
     groupe.add(conqueStatue);
 
     groupe.userData = { estAireRassemblement: true, zoneId: zone.id };
@@ -2702,43 +2704,50 @@ class GestionPopulation {
    objet tenu en main par le joueur quand il souffle dedans (voir main()).
    ========================================================================== */
 function construireConque(echelle = 1) {
-  const materiauConque = new THREE.MeshStandardMaterial({ color: 0xe6d9ba, roughness: 0.7 });
+  // Deux teintes bien contrastées : beige/sable à l'extérieur, rosé-saumon
+  // à l'intérieur de l'ouverture — c'est ce contraste qui rend une conque
+  // reconnaissable au premier coup d'œil, bien plus que sa seule silhouette.
+  const materiauExterieur = new THREE.MeshStandardMaterial({ color: 0xd9c49a, roughness: 0.75 });
+  const materiauInterieur = new THREE.MeshStandardMaterial({ color: 0xe8a596, roughness: 0.4 });
 
-  // Profil du corps : effilé à la pointe, qui s'élargit progressivement
-  // vers l'ouverture — silhouette spiralée simplifiée.
+  // Profil du corps (monotone croissant, sans pincement qui casserait la
+  // silhouette) : pointe fine → corps qui s'élargit progressivement.
   const profil = [
     new THREE.Vector2(0.02, 0),
-    new THREE.Vector2(0.05, 0.15),
-    new THREE.Vector2(0.1, 0.35),
-    new THREE.Vector2(0.16, 0.55),
-    new THREE.Vector2(0.22, 0.75),
+    new THREE.Vector2(0.06, 0.2),
+    new THREE.Vector2(0.12, 0.45),
+    new THREE.Vector2(0.2, 0.7),
     new THREE.Vector2(0.28, 0.95),
-    new THREE.Vector2(0.3, 1.1),
-    new THREE.Vector2(0.25, 1.22),
-    new THREE.Vector2(0.38, 1.38),
+    new THREE.Vector2(0.34, 1.15),
+    new THREE.Vector2(0.38, 1.3),
+    new THREE.Vector2(0.4, 1.4),
   ].map((v) => v.multiplyScalar(echelle));
 
-  const corps = new THREE.Mesh(new THREE.LatheGeometry(profil, 14), materiauConque);
+  const corps = new THREE.Mesh(new THREE.LatheGeometry(profil, 16), materiauExterieur);
   corps.rotation.z = Math.PI / 2; // couché : la pointe à gauche, l'ouverture à droite
   corps.castShadow = true;
 
   const groupe = new THREE.Group();
   groupe.add(corps);
 
-  // Aile évasée près de l'ouverture (lèvre externe du coquillage).
-  const aile = new THREE.Mesh(new THREE.ConeGeometry(0.34 * echelle, 0.5 * echelle, 10, 1, true), materiauConque);
-  aile.scale.set(1, 0.35, 1.3);
-  aile.position.set(1.18 * echelle, 0.15 * echelle, 0.1 * echelle);
-  aile.rotation.z = -Math.PI / 2.3;
-  aile.rotation.y = 0.3;
-  aile.castShadow = true;
-  groupe.add(aile);
+  // Disque rosé au fond de l'ouverture (l'indice visuel le plus parlant).
+  const interieur = new THREE.Mesh(new THREE.CircleGeometry(0.37 * echelle, 16), materiauInterieur);
+  interieur.position.set(1.4 * echelle, 0, 0);
+  interieur.rotation.y = Math.PI / 2;
+  groupe.add(interieur);
 
-  // Canal siphonal : petite pointe effilée à l'opposé de l'aile.
-  const canal = new THREE.Mesh(new THREE.ConeGeometry(0.06 * echelle, 0.32 * echelle, 8), materiauConque);
-  canal.position.set(1.3 * echelle, -0.05 * echelle, -0.08 * echelle);
-  canal.rotation.z = Math.PI / 2.4;
-  canal.rotation.y = -0.4;
+  // Lèvre évasée à l'ouverture : un anneau épais (pas un grand triangle qui
+  // écraserait toute la silhouette), bien ancré sur le bord du corps.
+  const levre = new THREE.Mesh(new THREE.TorusGeometry(0.36 * echelle, 0.1 * echelle, 10, 18), materiauExterieur);
+  levre.position.set(1.37 * echelle, 0, 0);
+  levre.rotation.y = Math.PI / 2;
+  levre.castShadow = true;
+  groupe.add(levre);
+
+  // Canal siphonal : petite pointe effilée dans le prolongement du corps.
+  const canal = new THREE.Mesh(new THREE.ConeGeometry(0.06 * echelle, 0.3 * echelle, 8), materiauExterieur);
+  canal.position.set(1.5 * echelle, -0.08 * echelle, 0);
+  canal.rotation.z = Math.PI / 2;
   canal.castShadow = true;
   groupe.add(canal);
 
