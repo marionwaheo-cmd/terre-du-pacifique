@@ -179,16 +179,32 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
 - Le bateau n'est pour l'instant pas pilotable : premier pas visuel avant un
   futur module de navigation.
 
-**Module 14 — petites quêtes ("scénarios")**
-- À chaque appel de la conque, le village demande une culture précise ; la
-  vendre avant le prochain appel rapporte une prime en pièces, annoncée dans
-  le bilan suivant.
+**Module 14 — objectifs du village ("scénarios")**
+- Deux objectifs actifs en permanence, tirés d'un éventail varié : **vendre**
+  une quantité d'une culture précise, **chasser** des cerfs, **pêcher**, ou
+  **régler un différend** de voisinage.
+- Récompense immédiate dès qu'un objectif est rempli (pas besoin d'attendre
+  la conque) : message, pièces, et incrément de **renommée**.
+- Tous les 5 objectifs réussis, un bonus supplémentaire tombe — la renommée
+  est sauvegardée d'une session à l'autre, pour donner un vrai cap à long
+  terme en plus de la récompense immédiate de chaque objectif.
+- La conque fait toujours le bilan (objectifs réussis depuis le dernier
+  appel) et tire deux nouveaux objectifs.
+- Les objectifs "vendre" ne portent que sur des cultures réellement
+  achetées par la coopérative (corrige un bug où la demande du village
+  pouvait porter sur une culture invendable).
 
 **Module 15/16 — sécurité du monde (eau)**
 - Ni les animaux (chevaux, sangliers, cerfs, notous, roussettes) ni les
-  arbres ne peuvent plus apparaître dans une mare ou en mer : l'eau reste de
-  l'eau. Le joueur peut s'approcher du bord (et se tenir sur un ponton de
-  pêche) mais ne peut plus marcher dans l'eau elle-même.
+  arbres/torches ne peuvent plus apparaître dans une mare ou en mer : l'eau
+  reste de l'eau. Le joueur peut s'approcher du bord (et se tenir sur un
+  ponton de pêche) mais ne peut plus marcher dans l'eau elle-même.
+
+**Optimisation (module 17)**
+- Les géométries des fougères, cocotiers et hibiscus ont été fortement
+  simplifiées (bien moins d'objets 3D par plante, même silhouette) et la
+  densité globale légèrement réduite, pour que le décor enrichi reste fluide
+  sur mobile et sur des machines modestes.
 
 ## 📱 Mobile
 Le jeu reste jouable au doigt (joystick virtuel + bouton E, module 8) ; la

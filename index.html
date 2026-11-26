@@ -323,6 +323,23 @@ traduite en géométries/matériaux Three.js originaux.
   }
   #hud strong { color: var(--couleur-accent); }
 
+  #hud-objectifs {
+    position: fixed;
+    top: 196px;
+    left: 12px;
+    padding: 8px 14px;
+    background: var(--couleur-fond-ui);
+    border-radius: 10px;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    backdrop-filter: blur(4px);
+    z-index: 10;
+    pointer-events: none;
+    max-width: 280px;
+  }
+  #hud-objectifs:empty { display: none; }
+  #hud-objectifs small { opacity: 0.75; }
+
   #hud-zone {
     position: fixed;
     bottom: 16px;
@@ -685,6 +702,7 @@ traduite en géométries/matériaux Three.js originaux.
 </div>
 
 <div id="hud-zone"></div>
+<div id="hud-objectifs"></div>
 <div id="hud-interaction"></div>
 <div id="avertissement" id="avertissement-perf"></div>
 
@@ -2005,7 +2023,7 @@ class TerrainBuilder {
     const materiauNoix = new THREE.MeshStandardMaterial({ color: 0x5a4028, roughness: 0.9 });
 
     const hauteur = THREE.MathUtils.randFloat(3.2, 4.8);
-    const nbSegments = 6;
+    const nbSegments = 3; // réduit (perf) : silhouette toujours incurvée, bien moins d'objets
     const courbure = THREE.MathUtils.randFloat(0.15, 0.4) * (Math.random() < 0.5 ? 1 : -1);
     let sommet = new THREE.Vector3(0, 0, 0);
     for (let i = 0; i < nbSegments; i++) {
@@ -2020,7 +2038,7 @@ class TerrainBuilder {
       sommet = new THREE.Vector3(x1, y1, 0);
     }
 
-    const nbPalmes = 7;
+    const nbPalmes = 5;
     for (let i = 0; i < nbPalmes; i++) {
       const angle = (i / nbPalmes) * Math.PI * 2;
       const palme = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 1.5), materiauPalme);
@@ -2031,7 +2049,7 @@ class TerrainBuilder {
       groupe.add(palme);
     }
     // Petites noix de coco groupées sous le feuillage.
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       const noix = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), materiauNoix);
       noix.position.set(sommet.x + THREE.MathUtils.randFloatSpread(0.25), sommet.y - 0.3, THREE.MathUtils.randFloatSpread(0.25));
       groupe.add(noix);
@@ -2051,24 +2069,22 @@ class TerrainBuilder {
     tronc.castShadow = true;
     groupe.add(tronc);
 
-    const nbFrondes = 9;
+    // Chaque fronde = UN seul cône aplati orienté le long de l'axe local Z
+    // (silhouette en plume), plutôt qu'une série de folioles — même lecture
+    // visuelle pour une fraction du nombre d'objets (perf).
+    const nbFrondes = 7;
     for (let i = 0; i < nbFrondes; i++) {
       const angle = (i / nbFrondes) * Math.PI * 2;
-      const fronde = new THREE.Group();
-      // Chaque fronde = une série de petites folioles le long d'une tige.
-      const nbFolioles = 5;
-      for (let j = 0; j < nbFolioles; j++) {
-        const t = j / nbFolioles;
-        const foliole = new THREE.Mesh(new THREE.ConeGeometry(0.1 - t * 0.06, 0.3, 4), materiauFronde);
-        foliole.position.set(0, 0, 0.3 + t * 0.9);
-        foliole.rotation.x = Math.PI / 2;
-        foliole.rotation.z = (j % 2 === 0 ? 1 : -1) * 0.5;
-        fronde.add(foliole);
-      }
-      fronde.position.y = hauteurTronc;
-      fronde.rotation.y = angle;
-      fronde.rotation.x = -0.5 - Math.random() * 0.2;
-      groupe.add(fronde);
+      const fronde = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.3, 5), materiauFronde);
+      fronde.scale.set(0.3, 1, 1); // aplatie : lue comme une plume depuis la plupart des angles
+      fronde.rotation.x = -Math.PI / 2;
+      fronde.position.z = 0.65;
+      const pivot = new THREE.Group();
+      pivot.add(fronde);
+      pivot.position.y = hauteurTronc;
+      pivot.rotation.y = angle;
+      pivot.rotation.x = -0.5 - Math.random() * 0.2;
+      groupe.add(pivot);
     }
     return groupe;
   }
@@ -2098,7 +2114,7 @@ class TerrainBuilder {
         feuille.rotation.x = -0.3;
         groupe.add(feuille);
       }
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         const fruit = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.14, 4, 6), materiauFruit);
         fruit.position.set(THREE.MathUtils.randFloatSpread(0.15), hauteurTronc - 0.3 - i * 0.12, THREE.MathUtils.randFloatSpread(0.15));
         groupe.add(fruit);
@@ -2117,7 +2133,7 @@ class TerrainBuilder {
     feuillage.castShadow = true;
     groupe.add(feuillage);
 
-    const nbFruits = 5 + Math.floor(Math.random() * 4);
+    const nbFruits = 3 + Math.floor(Math.random() * 3);
     for (let i = 0; i < nbFruits; i++) {
       const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), materiauFruit);
       const angle = Math.random() * Math.PI * 2;
@@ -2146,16 +2162,13 @@ class TerrainBuilder {
       feuillage.castShadow = true;
       groupe.add(feuillage);
     }
-    const nbFleurs = 4 + Math.floor(Math.random() * 4);
+    // Fleur simplifiée (perf) : un disque unique légèrement étoilé (au lieu
+    // de 5 pétales séparés) + un petit cœur — 2 objets par fleur au lieu de 6.
+    const nbFleurs = 3 + Math.floor(Math.random() * 3);
     for (let i = 0; i < nbFleurs; i++) {
-      const fleur = new THREE.Group();
-      for (let p = 0; p < 5; p++) {
-        const petale = new THREE.Mesh(new THREE.CircleGeometry(0.07, 8), materiauFleur);
-        petale.rotation.z = (p / 5) * Math.PI * 2;
-        petale.position.set(Math.cos((p / 5) * Math.PI * 2) * 0.05, Math.sin((p / 5) * Math.PI * 2) * 0.05, 0);
-        fleur.add(petale);
-      }
-      const coeur = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), materiauCoeur);
+      const fleur = new THREE.Mesh(new THREE.CircleGeometry(0.1, 5), materiauFleur);
+      const coeur = new THREE.Mesh(new THREE.SphereGeometry(0.02, 5, 5), materiauCoeur);
+      coeur.position.z = 0.005;
       fleur.add(coeur);
       fleur.position.set(THREE.MathUtils.randFloatSpread(0.5), THREE.MathUtils.randFloat(0.35, 0.65), THREE.MathUtils.randFloatSpread(0.5));
       fleur.rotation.x = -Math.PI / 2 + THREE.MathUtils.randFloatSpread(0.6);
@@ -2232,7 +2245,8 @@ class TerrainBuilder {
         const rayon = Math.max(zone.taille.largeur, zone.taille.profondeur) * 0.52;
         const x = zone.centre.x + Math.cos(angle) * rayon;
         const z = zone.centre.z + Math.sin(angle) * rayon;
-        const torche = this._construireTorche();
+        if (this.mares.some((m) => Math.hypot(x - m.x, z - m.z) < m.rayon + 1)) continue; // jamais dans l'eau
+        this._construireTorche();
         const dernier = this.torches[this.torches.length - 1];
         dernier.flamme.parent.position.set(x, this.obtenirHauteurSol(x, z), z);
       }
@@ -2250,7 +2264,10 @@ class TerrainBuilder {
     // Densité maximale : on remplit tout l'espace libre (hors zones et hors
     // chemins), pour qu'il ne reste quasiment plus de terrain vide — seuls
     // les sentiers/routes restent dégagés pour les déplacements.
-    const nbArbres = 650;
+    // Densité volontairement très élevée (vue utilisateur : "plus rien de
+    // vide"), mais les géométries ci-dessus ont été allégées au maximum
+    // (peu d'objets par plante) pour garder ce nombre jouable sur mobile.
+    const nbArbres = 520;
     let place = 0, tentatives = 0;
     while (place < nbArbres && tentatives < nbArbres * 8) {
       tentatives++;
@@ -3676,12 +3693,13 @@ class GestionSauvegarde {
   }
 
   capturer() {
-    const { sceneManager, joueur, personnage, terrain, population } = this.contexte;
+    const { sceneManager, joueur, personnage, terrain, population, objectifs } = this.contexte;
     return {
       version: 1,
       horodatage: Date.now(),
       tempsJeu: sceneManager.tempsJeu,
       jourJeu: sceneManager.jourJeu,
+      renommee: objectifs?.renommee || 0,
       // Base de temps RÉELLE (module 3bis) : sans elle, une culture plantée
       // avant une sauvegarde repartirait de 0% à la reprise (son horodatage
       // de plantation deviendrait supérieur au compteur réinitialisé).
@@ -3734,12 +3752,13 @@ class GestionSauvegarde {
 
   // Applique une sauvegarde chargée sur le monde fraîchement généré.
   appliquer(sauvegarde) {
-    const { sceneManager, joueur, personnage, terrain, population } = this.contexte;
+    const { sceneManager, joueur, personnage, terrain, population, objectifs } = this.contexte;
     if (!sauvegarde || sauvegarde.version !== 1) return;
 
     if (typeof sauvegarde.tempsJeu === "number") sceneManager.tempsJeu = sauvegarde.tempsJeu;
     if (typeof sauvegarde.jourJeu === "number") sceneManager.jourJeu = sauvegarde.jourJeu;
     if (typeof sauvegarde.tempsReelEcoule === "number") sceneManager.tempsReelEcoule = sauvegarde.tempsReelEcoule;
+    if (objectifs && typeof sauvegarde.renommee === "number") objectifs.renommee = sauvegarde.renommee;
 
     if (sauvegarde.joueur) {
       joueur.argent = sauvegarde.joueur.argent ?? joueur.argent;
@@ -4265,12 +4284,14 @@ class GestionGibierReglemente {
       });
       if (!dansUneZone && z < 120 && !this._dansUneMare(x, z)) return { x, z };
     }
-    return { x: 0, z: 0 };
+    return null; // aucune position valide trouvée : ne jamais spawner par défaut (évite l'eau/le village)
   }
 
   _peuplerPermanents() {
     for (let i = 0; i < 5; i++) {
-      const { x, z } = this._positionLibre();
+      const position = this._positionLibre();
+      if (!position) continue;
+      const { x, z } = position;
       const groupe = construireCerf();
       groupe.position.set(x, this.obtenirHauteurSol(x, z), z);
       groupe.rotation.y = Math.random() * Math.PI * 2;
@@ -4278,7 +4299,9 @@ class GestionGibierReglemente {
       this.animaux.push({ groupe, especeId: "cerf", cible: null, pause: Math.random() * 4 });
     }
     for (let i = 0; i < 6; i++) {
-      const { x, z } = this._positionLibre();
+      const position = this._positionLibre();
+      if (!position) continue;
+      const { x, z } = position;
       const groupe = construireNotou();
       groupe.position.set(x, this.obtenirHauteurSol(x, z), z);
       groupe.rotation.y = Math.random() * Math.PI * 2;
@@ -4289,7 +4312,9 @@ class GestionGibierReglemente {
 
   _peuplerRoussettes() {
     for (let i = 0; i < 5; i++) {
-      const { x, z } = this._positionLibre();
+      const position = this._positionLibre();
+      if (!position) continue;
+      const { x, z } = position;
       const groupe = construireRoussette();
       groupe.position.set(x, this.obtenirHauteurSol(x, z), z);
       groupe.rotation.y = Math.random() * Math.PI * 2;
@@ -4645,6 +4670,7 @@ function main() {
               effets.jouerRecolte();
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
+              if (espece.id === "cerf") progresserObjectif("chasser", 1);
             },
           };
         }
@@ -4679,6 +4705,7 @@ function main() {
                 effets.jouerPiece();
                 mettreAJourHudEconomie();
                 sauvegarde.sauvegarder();
+                progresserObjectif("pecher", 1);
               }, 900);
             },
           };
@@ -4725,17 +4752,19 @@ function main() {
           cibleCourante = {
             libelle: `E : vendre la récolte à ${c.data.nom}`,
             action: () => {
-              const quetePeutEtreHonoree = quete.cultureId && !quete.primeVersee
-                && (joueur.inventaire[quete.cultureId] || 0) > 0 && c.data.achete.includes(quete.cultureId);
+              // Capture AVANT la vente : un objectif "vendre" sur cette culture
+              // est honoré dès que le stock correspondant part en vente.
+              const quantitesAvant = {};
+              objectifs.liste.forEach((o) => {
+                if (o.type === "vendre" && !o.fait) quantitesAvant[o.cultureId] = joueur.inventaire[o.cultureId] || 0;
+              });
               const { total, nbVendu } = cultures.vendreRecolte(c);
               if (nbVendu > 0) { population.ajouterRevenuCommunautaire(total); statsSemaine.argentGagne += total; }
-              let messageVente = nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment";
-              if (quetePeutEtreHonoree) {
-                quete.primeVersee = true;
-                joueur.argent += quete.prime;
-                messageVente += ` · Demande du village honorée : +${quete.prime} pièces de prime !`;
-              }
+              const messageVente = nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment";
               afficherMessage(messageVente);
+              Object.entries(quantitesAvant).forEach(([cultureId, qte]) => {
+                if (qte > 0) progresserObjectif("vendre", qte, cultureId);
+              });
               (nbVendu > 0 ? effets.jouerPiece() : effets.jouerErreur());
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
@@ -5018,6 +5047,7 @@ function main() {
         afficherMessage(texte);
         statsSemaine.conflitsResolus += 1;
         effets.jouerSucces();
+        progresserObjectif("conflit", 1);
       });
       grilleConflit.appendChild(bouton);
     });
@@ -5045,11 +5075,86 @@ function main() {
   // --- Statistiques de la semaine, remises à zéro à chaque conque sonnée --
   // (module : bilans annoncés par la conque).
   const statsSemaine = { argentGagne: 0, conflitsResolus: 0 };
-  // Petit objectif récurrent (module 14 — "scénarios") : le village demande
-  // une culture précise à chaque conque ; la vendre avant la prochaine
-  // conque rapporte une prime. Simple boucle de progression, sans niveaux
-  // complexes, qui donne une raison concrète de replanter chaque semaine.
-  const quete = { cultureId: null, primeVersee: false, prime: 40 };
+
+  /* ========================================================================
+     OBJECTIFS DU VILLAGE ("scénarios", module 14) — plusieurs objectifs
+     variés à la fois (vendre / chasser / pêcher / résoudre un différend),
+     renouvelés à chaque conque, avec récompense immédiate (pas d'attente
+     jusqu'au bilan) et une "renommée" cumulative qui donne un vrai cap à
+     long terme : tous les 5 objectifs réussis, un bonus tombe.
+     ======================================================================== */
+  const objectifs = { liste: [], renommee: 0 };
+  const hudObjectifs = document.getElementById("hud-objectifs");
+
+  function culturesVendables() {
+    const coop = terrain.commerces.find((c) => c.data.achete);
+    return coop ? coop.data.achete : MondeData.cultures.map((c) => c.id);
+  }
+
+  function genererUnObjectif(typesExclus) {
+    const pool = ["vendre", "chasser", "pecher", "conflit"].filter((t) => !typesExclus.includes(t));
+    const type = pool[Math.floor(Math.random() * pool.length)];
+    if (type === "vendre") {
+      const ids = culturesVendables();
+      const cultureId = ids[Math.floor(Math.random() * ids.length)];
+      const culture = MondeData.cultures.find((c) => c.id === cultureId);
+      const quantite = 1 + Math.floor(Math.random() * 3);
+      return {
+        type, cultureId, quantite, progres: 0, fait: false,
+        prime: quantite * 15 + 10,
+        libelle: `Vendre ${quantite} ${culture.icone} ${culture.nom}`,
+      };
+    }
+    if (type === "chasser") {
+      const quantite = 1 + Math.floor(Math.random() * 2);
+      return { type, quantite, progres: 0, fait: false, prime: quantite * 30 + 15, libelle: `Chasser ${quantite} 🦌 cerf` };
+    }
+    if (type === "pecher") {
+      const quantite = 1 + Math.floor(Math.random() * 2);
+      return { type, quantite, progres: 0, fait: false, prime: quantite * 12 + 10, libelle: `Pêcher ${quantite} fois 🎣` };
+    }
+    return { type: "conflit", quantite: 1, progres: 0, fait: false, prime: 25, libelle: "Régler un différend ❗" };
+  }
+
+  function genererObjectifs() {
+    objectifs.liste = [];
+    const typesUtilises = [];
+    for (let i = 0; i < 2; i++) {
+      const obj = genererUnObjectif(typesUtilises);
+      typesUtilises.push(obj.type);
+      objectifs.liste.push(obj);
+    }
+    mettreAJourHudObjectifs();
+  }
+
+  function mettreAJourHudObjectifs() {
+    if (!hudObjectifs) return;
+    hudObjectifs.innerHTML = objectifs.liste
+      .map((o) => `${o.fait ? "✅" : "🎯"} ${o.libelle} (${Math.min(o.progres, o.quantite)}/${o.quantite}) · +${o.prime}💰`)
+      .join("<br>") + `<br><small>Renommée : ${objectifs.renommee}</small>`;
+  }
+
+  function progresserObjectif(type, quantiteAjoutee = 1, cultureId = null) {
+    let aChange = false;
+    objectifs.liste.forEach((obj) => {
+      if (obj.fait || obj.type !== type) return;
+      if (type === "vendre" && obj.cultureId !== cultureId) return;
+      obj.progres += quantiteAjoutee;
+      aChange = true;
+      if (obj.progres >= obj.quantite) {
+        obj.fait = true;
+        joueur.argent += obj.prime;
+        objectifs.renommee += 1;
+        afficherMessage(`🎯 Objectif rempli : ${obj.libelle} — +${obj.prime} pièces !`);
+        effets.jouerSucces();
+        if (objectifs.renommee % 5 === 0) {
+          joueur.argent += 50;
+          afficherMessage(`🏅 Le village vous fait confiance (renommée ${objectifs.renommee}) : +50 pièces !`);
+        }
+      }
+    });
+    if (aChange) { mettreAJourHudEconomie(); mettreAJourHudObjectifs(); sauvegarde.sauvegarder(); }
+  }
 
   // --- Séquence "souffler dans la conque" ---------------------------------
   // Mouvement du joueur bloqué le temps de la prise en main réelle (de la
@@ -5079,25 +5184,22 @@ function main() {
     rassemblementMinuteur = 9; // secondes
 
     // Bilan annoncé : ventes/différends réglés depuis la dernière conque,
-    // et le résultat de la demande précédente (module 14).
+    // et le résultat des objectifs précédents (module 14).
     let bilan = statsSemaine.argentGagne > 0 || statsSemaine.conflitsResolus > 0
       ? `Bilan : ${statsSemaine.argentGagne} pièces de récoltes vendues, ${statsSemaine.conflitsResolus} différend(s) réglé(s). `
       : "Bilan : une semaine calme. ";
-    if (quete.cultureId) {
-      const cultureDemandee = MondeData.cultures.find((c) => c.id === quete.cultureId);
-      bilan += quete.primeVersee
-        ? `Demande honorée (${cultureDemandee.icone} ${cultureDemandee.nom}) : prime de ${quete.prime} pièces versée ! `
-        : `Demande non honorée (${cultureDemandee.icone} ${cultureDemandee.nom}) — ce sera pour une prochaine fois. `;
+    const nbReussis = objectifs.liste.filter((o) => o.fait).length;
+    if (objectifs.liste.length > 0) {
+      bilan += `Objectifs : ${nbReussis}/${objectifs.liste.length} réussis. `;
     }
 
-    const demande = MondeData.cultures[Math.floor(Math.random() * MondeData.cultures.length)];
-    quete.cultureId = demande.id;
-    quete.primeVersee = false;
-    hudZoneFlottant.textContent = bilan + `Le village recherche : ${demande.icone} ${demande.nom} (prime de ${quete.prime} pièces si livrée avant la prochaine conque).`;
+    genererObjectifs();
+    hudZoneFlottant.textContent = bilan + `Nouveaux objectifs : ${objectifs.liste.map((o) => o.libelle).join(" · ")}.`;
     hudZoneFlottant.classList.add("visible");
 
     statsSemaine.argentGagne = 0;
     statsSemaine.conflitsResolus = 0;
+    sauvegarde.sauvegarder();
   }
 
   function mettreAJourRassemblement(dt) {
@@ -5327,7 +5429,7 @@ function main() {
   // La sauvegarde est LUE tout de suite, mais seulement APPLIQUÉE une fois
   // que le joueur a choisi "Continuer" ou "Nouvelle partie" sur l'écran
   // d'accueil (module 7) — on évite ainsi d'écraser un choix explicite.
-  const sauvegarde = new GestionSauvegarde({ sceneManager, joueur, personnage, terrain, population });
+  const sauvegarde = new GestionSauvegarde({ sceneManager, joueur, personnage, terrain, population, objectifs });
   const sauvegardeExistante = sauvegarde.charger();
 
   // Sauvegarde automatique périodique + à la fermeture de l'onglet.
@@ -5356,6 +5458,7 @@ function main() {
   function demarrerPartie(reprendre) {
     if (reprendre) sauvegarde.appliquer(sauvegardeExistante);
     else sauvegarde.effacer();
+    genererObjectifs();
     mettreAJourHudEconomie();
     ecranTitre.classList.remove("visible");
   }
