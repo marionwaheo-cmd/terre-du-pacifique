@@ -372,7 +372,7 @@ traduite en géométries/matériaux Three.js originaux.
   #hud-interaction.visible { opacity: 1; }
 
   /* --- Panneau de personnalisation (module 2) ------------------------- */
-  #bouton-tenue, #bouton-musique, #bouton-reinitialiser {
+  #bouton-tenue, #bouton-musique, #bouton-multi, #bouton-reinitialiser {
     position: fixed;
     top: 12px;
     right: 12px;
@@ -387,7 +387,36 @@ traduite en géométries/matériaux Three.js originaux.
   }
   #bouton-musique { right: 118px; }
   #bouton-musique.actif { border-color: #6fcf97; }
-  #bouton-reinitialiser { right: 226px; padding: 8px 12px; }
+  #bouton-multi { right: 226px; }
+  #bouton-multi.actif { border-color: #6fcf97; }
+  #bouton-reinitialiser { right: 334px; padding: 8px 12px; }
+  #panneau-multi {
+    position: fixed;
+    top: 56px;
+    right: 226px;
+    width: 250px;
+    padding: 14px;
+    background: var(--couleur-fond-ui);
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
+    z-index: 20;
+    font-size: 0.78rem;
+    display: none;
+  }
+  #panneau-multi.visible { display: block; }
+  #panneau-multi h3 { margin: 0 0 8px; font-size: 0.85rem; color: var(--couleur-accent); }
+  #panneau-multi input {
+    width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;
+    border-radius: 6px; border: 1px solid var(--couleur-accent); background: rgba(0,0,0,0.25);
+    color: var(--couleur-texte); font-size: 0.85rem; text-transform: uppercase;
+  }
+  #panneau-multi button.action-multi {
+    width: 100%; padding: 7px; margin-bottom: 6px; border-radius: 6px;
+    border: 1px solid var(--couleur-accent); background: transparent; color: var(--couleur-texte);
+    cursor: pointer; font-size: 0.78rem;
+  }
+  #panneau-multi button.action-multi:hover { background: var(--couleur-accent); color: #1c2a1c; }
+  #panneau-multi-statut { margin-top: 6px; opacity: 0.85; font-size: 0.74rem; line-height: 1.4; }
   #panneau-tenue {
     position: fixed;
     top: 56px;
@@ -644,7 +673,15 @@ traduite en géométries/matériaux Three.js originaux.
 
 <button id="bouton-musique" title="Activer/couper la musique d'ambiance">🎵 Musique</button>
 <button id="bouton-tenue" title="Choisir la tenue (touche I)">👕 Tenue</button>
+<button id="bouton-multi" title="Jouer avec un proche">👥 Multi</button>
 <button id="bouton-reinitialiser" title="Effacer la sauvegarde et recommencer">🗑️</button>
+<div id="panneau-multi">
+  <h3>Jouer ensemble</h3>
+  <input id="multi-code" placeholder="code du salon (ex: ILE-4821)" maxlength="12">
+  <button id="multi-creer" class="action-multi">Créer un salon</button>
+  <button id="multi-rejoindre" class="action-multi">Rejoindre ce code</button>
+  <div id="panneau-multi-statut">Pas encore connecté.</div>
+</div>
 <div id="panneau-tenue">
   <h3>Apparence</h3>
   <div class="ligne-genre">
@@ -697,6 +734,10 @@ traduite en géométries/matériaux Three.js originaux.
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+// Multijoueur pair-à-pair (module 10), 100% gratuit, sans serveur dédié :
+// Trystero relie les navigateurs directement via WebRTC, en utilisant les
+// trackers BitTorrent publics uniquement pour la mise en relation initiale.
+import { joinRoom } from "https://cdn.jsdelivr.net/npm/trystero@0.21.0/torrent/+esm";
 
 /* ==========================================================================
    1. DONNÉES DU MONDE — MondeData
@@ -3373,6 +3414,110 @@ class GestionFaune {
    le HUD, et lance la boucle de rendu.
    ========================================================================== */
 
+/* ==========================================================================
+   9bis. MULTIJOUEUR PAIR-À-PAIR — GestionMultijoueur (module 10)
+   ==========================================================================
+   Connexion directe navigateur-à-navigateur (WebRTC via Trystero), sans
+   aucun serveur ni compte à créer : on partage juste un petit code de
+   salon. Pensé pour un très petit groupe (le joueur + son/sa partenaire).
+   Diffuse la position/apparence du joueur (avatars distants rendus avec le
+   même gabarit `construireSilhouetteHumaine`) et les actions-clés de
+   l'économie partagée (plantation, récolte, vente, achats, école), que
+   chaque client applique à sa propre simulation en la recevant.
+   ========================================================================== */
+
+class GestionMultijoueur {
+  constructor(scene) {
+    this.scene = scene;
+    this.room = null;
+    this.sendEtat = null;
+    this.sendEvt = null;
+    this.joueursDistants = new Map(); // peerId -> { groupe, cible: Vector3, ry }
+    this.onEvenement = null; // (type, payload) => void, défini par main()
+    this.onStatut = null; // (texte) => void, pour le HUD
+    this._dernierEtat = null;
+  }
+
+  _construireAvatar(apparence) {
+    const liste = apparence.genre === "homme" ? MondeData.garderobe.hommes : MondeData.garderobe.femmes;
+    const tenue = liste[THREE.MathUtils.clamp(apparence.indexTenue ?? 0, 0, liste.length - 1)];
+    const teintePeau = MondeData.garderobe.teintesPeau[apparence.indexPeau ?? 1];
+    const silhouette = construireSilhouetteHumaine({
+      genre: apparence.genre === "homme" ? "homme" : "femme",
+      couleurHaut: tenue.couleur,
+      couleurBas: apparence.genre === "homme" ? 0x33302a : tenue.couleur,
+      couleurMotif: tenue.motif,
+      couleurPeau: teintePeau,
+      detaille: true,
+      styleCheveux: apparence.styleCheveux,
+      couleurCheveux: apparence.couleurCheveux,
+    });
+    this.scene.add(silhouette.groupe);
+    return silhouette.groupe;
+  }
+
+  rejoindre(code) {
+    this.quitter();
+    this.room = joinRoom({ appId: "terre-du-pacifique-v1" }, code);
+
+    const [sendEtat, getEtat] = this.room.makeAction("etat");
+    const [sendEvt, getEvt] = this.room.makeAction("evt");
+    this.sendEtat = sendEtat;
+    this.sendEvt = sendEvt;
+
+    getEtat((donnees, peerId) => {
+      let entree = this.joueursDistants.get(peerId);
+      if (!entree) {
+        entree = { groupe: this._construireAvatar(donnees), cible: new THREE.Vector3(), ry: 0 };
+        this.joueursDistants.set(peerId, entree);
+      }
+      entree.cible.set(donnees.x, donnees.y, donnees.z);
+      entree.ry = donnees.ry;
+    });
+
+    getEvt((donnees) => { if (this.onEvenement) this.onEvenement(donnees.type, donnees.payload); });
+
+    this.room.onPeerJoin((peerId) => {
+      if (this._dernierEtat) this.sendEtat(this._dernierEtat, peerId);
+      if (this.onStatut) this.onStatut(`Connecté·e (${this.joueursDistants.size + 1} joueur(s) dans le salon).`);
+    });
+    this.room.onPeerLeave((peerId) => {
+      const entree = this.joueursDistants.get(peerId);
+      if (entree) { this.scene.remove(entree.groupe); this.joueursDistants.delete(peerId); }
+      if (this.onStatut) this.onStatut("L'autre joueur a quitté le salon.");
+    });
+  }
+
+  quitter() {
+    if (this.room) { this.room.leave(); this.room = null; }
+    this.joueursDistants.forEach((e) => this.scene.remove(e.groupe));
+    this.joueursDistants.clear();
+    this.sendEtat = null;
+    this.sendEvt = null;
+  }
+
+  diffuserEtat(etat) {
+    this._dernierEtat = etat;
+    if (this.sendEtat) this.sendEtat(etat);
+  }
+
+  diffuserEvenement(type, payload) {
+    if (this.sendEvt) this.sendEvt({ type, payload });
+  }
+
+  get connecte() { return !!this.room; }
+
+  update(dt) {
+    this.joueursDistants.forEach((entree) => {
+      entree.groupe.position.lerp(entree.cible, Math.min(1, dt * 10));
+      let delta = entree.ry - entree.groupe.rotation.y;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      entree.groupe.rotation.y += delta * Math.min(1, dt * 10);
+    });
+  }
+}
+
+
 function main() {
   const sceneManager = new SceneManager(document.body);
   const terrain = new TerrainBuilder(sceneManager.scene);
@@ -3388,6 +3533,7 @@ function main() {
   const conflits = new GestionConflits(terrain, population);
   const effets = new EffetsSonores();
   const faune = new GestionFaune(sceneManager.scene, terrain.obtenirHauteurSol, population.tribus);
+  const multijoueur = new GestionMultijoueur(sceneManager.scene);
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -3525,6 +3671,7 @@ function main() {
               effets.jouerRecolte();
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
+              multijoueur.diffuserEvenement("recolter", { parcelleIndex: terrain.parcelles.indexOf(p) });
             },
           };
         } else if (joueur.engrais > 0) {
@@ -3552,6 +3699,7 @@ function main() {
               (nbVendu > 0 ? effets.jouerPiece() : effets.jouerErreur());
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
+              if (nbVendu > 0) multijoueur.diffuserEvenement("vente", { total });
             },
           };
         } else if (c.data.vend?.includes("engrais")) {
@@ -3602,6 +3750,7 @@ function main() {
               effets.jouerSucces();
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
+              multijoueur.diffuserEvenement("ecole", {});
             },
           };
         } else {
@@ -3702,6 +3851,7 @@ function main() {
         afficherMessage(`Planté : ${culture.icone} ${culture.nom}`);
         effets.jouerPlanter();
         sauvegarde.sauvegarder();
+        multijoueur.diffuserEvenement("planter", { parcelleIndex: terrain.parcelles.indexOf(parcelleCiblee), cultureId: culture.id });
       });
       grillePlantation.appendChild(bouton);
     });
@@ -3771,6 +3921,7 @@ function main() {
     if (parcelleEntree && !parcelleEntree.data.cultureActuelle) {
       cultures.planter(parcelleEntree, graineSelectionnee, sceneManager.tempsReelEcoule);
       effets.jouerPlanter();
+      multijoueur.diffuserEvenement("planter", { parcelleIndex: terrain.parcelles.indexOf(parcelleEntree), cultureId: graineSelectionnee });
     }
   }
 
@@ -3969,6 +4120,57 @@ function main() {
     boutonMusique.classList.toggle("actif", enMarche);
   });
 
+  /* ======================================================================
+     MULTIJOUEUR (module 10) — salon à 2 (ou plus), gratuit, pair-à-pair.
+     On reçoit les actions des autres joueurs et on les applique à sa
+     propre simulation (chaque client est autonome, pas de serveur hôte).
+     ====================================================================== */
+  const boutonMulti = document.getElementById("bouton-multi");
+  const panneauMulti = document.getElementById("panneau-multi");
+  const champCodeMulti = document.getElementById("multi-code");
+  const statutMulti = document.getElementById("panneau-multi-statut");
+
+  function genererCodeSalon() {
+    const mots = ["ILE", "LAGON", "CONQUE", "NOTOU", "IGNAME", "TARO", "RECIF"];
+    const mot = mots[Math.floor(Math.random() * mots.length)];
+    const chiffres = Math.floor(1000 + Math.random() * 9000);
+    return `${mot}-${chiffres}`;
+  }
+
+  function connecterSalon(code) {
+    multijoueur.rejoindre(code);
+    multijoueur.onStatut = (texte) => { statutMulti.textContent = texte; };
+    multijoueur.onEvenement = (type, payload) => {
+      if (type === "planter") {
+        const p = terrain.parcelles[payload.parcelleIndex];
+        if (p && !p.data.cultureActuelle) cultures.planter(p, payload.cultureId, sceneManager.tempsReelEcoule);
+      } else if (type === "recolter") {
+        const p = terrain.parcelles[payload.parcelleIndex];
+        if (p && p._progressionCourante >= 1) cultures.recolter(p);
+      } else if (type === "vente") {
+        population.ajouterRevenuCommunautaire(payload.total);
+        statsSemaine.argentGagne += payload.total;
+      } else if (type === "ecole") {
+        if (!population.ecoleConstruite()) population.construireEcole();
+      }
+      mettreAJourHudEconomie();
+    };
+    statutMulti.textContent = `Salon « ${code} » rejoint. En attente de l'autre joueur…`;
+    boutonMulti.classList.add("actif");
+  }
+
+  boutonMulti.addEventListener("click", () => panneauMulti.classList.toggle("visible"));
+  document.getElementById("multi-creer").addEventListener("click", () => {
+    const code = genererCodeSalon();
+    champCodeMulti.value = code;
+    connecterSalon(code);
+  });
+  document.getElementById("multi-rejoindre").addEventListener("click", () => {
+    const code = champCodeMulti.value.trim().toUpperCase();
+    if (!code) { statutMulti.textContent = "Entrez un code de salon d'abord."; return; }
+    connecterSalon(code);
+  });
+
   boutonTenue.addEventListener("click", basculerPanneauTenue);
   boutonGenreFemme.addEventListener("click", () => {
     personnage.definirTenue("femme", 0);
@@ -4118,6 +4320,7 @@ function main() {
   // foyers restés allumés (ils doivent être rallumés chaque soir).
   let etaitNuit = false;
   let dernierJourTraite = sceneManager.jourJeu;
+  let minuteurDiffusionMulti = 0;
 
   function boucleAnimation() {
     const dt = Math.min(sceneManager.horloge.getDelta(), 0.05);
@@ -4131,6 +4334,17 @@ function main() {
     population.update(dt);
     conflits.update(dt, sceneManager.scene);
     faune.update(dt, sceneManager.estNuit);
+    multijoueur.update(dt);
+    minuteurDiffusionMulti -= dt;
+    if (minuteurDiffusionMulti <= 0 && multijoueur.connecte) {
+      minuteurDiffusionMulti = 0.12;
+      multijoueur.diffuserEtat({
+        x: personnage.position.x, y: personnage.position.y, z: personnage.position.z,
+        ry: personnage.groupe.rotation.y,
+        genre: personnage.genre, indexTenue: personnage.indexTenue, indexPeau: personnage.indexPeau,
+        styleCheveux: personnage.styleCheveux, couleurCheveux: personnage.couleurCheveux,
+      });
+    }
     if (sceneManager.jourJeu !== dernierJourTraite) {
       dernierJourTraite = sceneManager.jourJeu;
       population.nouveauJour();

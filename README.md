@@ -130,6 +130,19 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   légalement toute l'année car elle endommage les cultures : aucune
   dramatisation, simple activité de subsistance.
 
+**Module 10 — multijoueur pair-à-pair**
+- Bouton **👥 Multi** : créer un salon (code généré automatiquement, ex.
+  `TARO-5996`) ou rejoindre celui d'un proche.
+- Connexion directe entre navigateurs via WebRTC ([Trystero](https://github.com/dmotz/trystero)),
+  sans aucun serveur à héberger ni compte à créer — juste un code à partager.
+- Chaque joueur voit l'autre se déplacer en temps réel (même silhouette que
+  le personnage, avec son apparence).
+- Actions partagées : planter, récolter, vendre une récolte et construire
+  l'école sont répercutées chez l'autre joueur.
+- Pensé pour un tout petit groupe (ex. soi-même et son/sa partenaire) ; la
+  faune, les différends de voisinage et la progression des tribus restent
+  simulés localement par chaque client pour l'instant.
+
 ## 🔧 Améliorations récentes
 
 - **Déplacement relatif à la caméra** : avancer (W) déplace désormais le
