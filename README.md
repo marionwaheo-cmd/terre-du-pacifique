@@ -143,6 +143,13 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   faune, les différends de voisinage et la progression des tribus restent
   simulés localement par chaque client pour l'instant.
 
+**Module 11 — décor enrichi**
+- Végétation bien plus dense (arbres, bananiers et buissons bas), pour un
+  paysage moins vide.
+- Petites mares d'eau douce près de chaque tribu, avec une berge herbeuse.
+- Une quinzaine de chevaux en liberté, dispersés sur toute la carte, qui
+  errent paisiblement de jour comme de nuit (décoratif, non chassable).
+
 ## 🔧 Améliorations récentes
 
 - **Déplacement relatif à la caméra** : avancer (W) déplace désormais le
