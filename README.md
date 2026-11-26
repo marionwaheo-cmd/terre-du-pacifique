@@ -216,6 +216,9 @@ en disposition flexible et se réduit sur petit écran pour ne jamais déborder.
 - **Déplacement relatif à la caméra** : avancer (W) déplace désormais le
   personnage dans la direction où regarde la caméra, comme dans la plupart
   des jeux à caméra orbitale (corrige la prise en main).
+- **Gauche/droite corrigés** : le vecteur "droite caméra" utilisé par les
+  touches A/D et par le joystick tactile était inversé (aller à droite
+  demandait de pousser vers la gauche, et inversement) — corrigé.
 - **Cultures accélérées** : la croissance se compte maintenant en minutes
   réelles (1,5 à 7 min selon la culture) plutôt qu'en jours de jeu, pour
   rester satisfaisante à jouer.

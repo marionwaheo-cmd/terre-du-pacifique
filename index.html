@@ -2735,7 +2735,7 @@ class Personnage {
     if (camera) {
       avantCamera.set(this.groupe.position.x - camera.position.x, 0, this.groupe.position.z - camera.position.z);
       if (avantCamera.lengthSq() < 0.0001) avantCamera.set(0, 0, -1); else avantCamera.normalize();
-      droiteCamera.set(avantCamera.z, 0, -avantCamera.x);
+      droiteCamera.set(-avantCamera.z, 0, avantCamera.x);
     } else {
       avantCamera.set(0, 0, -1);
       droiteCamera.set(1, 0, 0);
