@@ -1519,19 +1519,12 @@ class TerrainBuilder {
     socle.castShadow = true;
     groupe.add(socle);
 
-    // Sculpture évoquant une conque : forme spiralée simplifiée (tore +
-    // cône), de couleur crème — silhouette générique, pas un modèle réaliste.
-    const materiauConque = new THREE.MeshStandardMaterial({ color: 0xe9dcc0, roughness: 0.6 });
-    const corpsConque = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.3, 10, 1, true), materiauConque);
-    corpsConque.position.set(pos.x, h + 0.35 + 0.65, pos.z);
-    corpsConque.rotation.x = Math.PI * 0.08;
-    corpsConque.castShadow = true;
-    groupe.add(corpsConque);
-    const anneauConque = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.12, 8, 16), materiauConque);
-    anneauConque.position.set(pos.x, h + 0.35 + 1.1, pos.z);
-    anneauConque.rotation.x = Math.PI / 2;
-    anneauConque.castShadow = true;
-    groupe.add(anneauConque);
+    // Sculpture évoquant une vraie conque (voir `construireConque`),
+    // posée inclinée sur le socle, ouverture vers le ciel.
+    const conqueStatue = construireConque(1.1);
+    conqueStatue.rotation.z = Math.PI * 0.18;
+    conqueStatue.position.set(pos.x - 0.4, h + 0.35 + 0.3, pos.z);
+    groupe.add(conqueStatue);
 
     groupe.userData = { estAireRassemblement: true, zoneId: zone.id };
     this.airesRassemblement.push({
@@ -1755,6 +1748,36 @@ class TerrainBuilder {
 
   // Végétation de fond simple (cônes/sphères low-poly façon arbres), dispersée
   // hors des zones pour donner une ambiance tropicale sans surcharger la scène.
+  // Bananier stylisé : touffe de courts pseudo-troncs serrés, surmontés de
+  // grandes feuilles ovales incurvées qui partent dans toutes les
+  // directions — silhouette reconnaissable, formes originales (plans
+  // incurvés via BoxGeometry aplatie), jamais une image copiée.
+  _construireBananier() {
+    const groupe = new THREE.Group();
+    const materiauTronc = new THREE.MeshStandardMaterial({ color: 0x7ba05b, roughness: 0.85 });
+    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x2f8a3a, roughness: 0.8, side: THREE.DoubleSide });
+
+    const nbTroncs = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < nbTroncs; i++) {
+      const angle = (i / nbTroncs) * Math.PI * 2;
+      const rayon = 0.12;
+      const hauteur = THREE.MathUtils.randFloat(1.0, 1.6);
+      const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, hauteur, 6), materiauTronc);
+      tronc.position.set(Math.cos(angle) * rayon, hauteur / 2, Math.sin(angle) * rayon);
+      tronc.castShadow = true;
+      groupe.add(tronc);
+
+      // Grande feuille ovale incurvée au sommet de ce pseudo-tronc.
+      const feuille = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.02, 1.4), materiauFeuille);
+      feuille.position.set(Math.cos(angle) * rayon, hauteur, Math.sin(angle) * rayon + 0.6);
+      feuille.rotation.x = -0.35 - Math.random() * 0.25; // retombe légèrement
+      feuille.rotation.y = angle + (Math.random() - 0.5) * 0.4;
+      feuille.castShadow = true;
+      groupe.add(feuille);
+    }
+    return groupe;
+  }
+
   _genererVegetationDeFond() {
     const groupeVegetation = new THREE.Group();
     groupeVegetation.name = "VegetationDeFond";
@@ -1776,6 +1799,18 @@ class TerrainBuilder {
       });
       if (dansUneZone || z > 120) { continue; }
 
+      const h = this.obtenirHauteurSol(x, z);
+
+      // Un arbre sur quatre environ est un bananier, pour varier le décor.
+      if (Math.random() < 0.25) {
+        const bananier = this._construireBananier();
+        bananier.position.set(x, h, z);
+        bananier.rotation.y = Math.random() * Math.PI * 2;
+        groupeVegetation.add(bananier);
+        place++;
+        continue;
+      }
+
       const arbre = new THREE.Group();
       const hauteurTronc = THREE.MathUtils.randFloat(1.2, 2.2);
       const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, hauteurTronc, 6), materiauTronc);
@@ -1792,7 +1827,6 @@ class TerrainBuilder {
       feuillage.scale.y = 1.3; // silhouette évoquant un cocotier/arbre tropical stylisé
       arbre.add(feuillage);
 
-      const h = this.obtenirHauteurSol(x, z);
       arbre.position.set(x, h, z);
       arbre.rotation.y = Math.random() * Math.PI * 2;
       groupeVegetation.add(arbre);
@@ -2324,6 +2358,61 @@ class EffetsSonores {
   jouerPiece() { this._note(1046, 0.08, "square", 0.09); this._note(1568, 0.12, "square", 0.07, 0.06); }
   jouerSucces() { this._note(523, 0.12, "triangle", 0.09); this._note(659, 0.12, "triangle", 0.09, 0.1); this._note(784, 0.2, "triangle", 0.09, 0.2); }
   jouerErreur() { this._note(180, 0.18, "sawtooth", 0.07); }
+
+  // Imite (sans l'avoir écouté, par synthèse) le souffle grave et soufflé
+  // d'une conque : oscillateur grave avec vibrato + bruit de souffle filtré,
+  // montée en pression puis tenue puis extinction.
+  jouerConque(duree = 2.2) {
+    const ctx = this._obtenirContexte();
+    const t0 = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(85, t0);
+    osc.frequency.linearRampToValueAtTime(135, t0 + 0.4);
+    osc.frequency.linearRampToValueAtTime(120, t0 + duree);
+
+    const vibrato = ctx.createOscillator();
+    vibrato.frequency.value = 5.5;
+    const gainVibrato = ctx.createGain();
+    gainVibrato.gain.value = 4;
+    vibrato.connect(gainVibrato).connect(osc.frequency);
+    vibrato.start(t0);
+    vibrato.stop(t0 + duree);
+
+    const filtre = ctx.createBiquadFilter();
+    filtre.type = "lowpass";
+    filtre.frequency.value = 450;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.22, t0 + 0.35);
+    gain.gain.setValueAtTime(0.22, t0 + duree - 0.4);
+    gain.gain.linearRampToValueAtTime(0.0001, t0 + duree);
+
+    osc.connect(filtre).connect(gain).connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + duree + 0.1);
+
+    // Bruit de souffle (air) superposé, filtré en bande étroite.
+    const taille = Math.floor(ctx.sampleRate * duree);
+    const buffer = ctx.createBuffer(1, taille, ctx.sampleRate);
+    const donnees = buffer.getChannelData(0);
+    for (let i = 0; i < taille; i++) donnees[i] = Math.random() * 2 - 1;
+    const bruit = ctx.createBufferSource();
+    bruit.buffer = buffer;
+    const filtreBruit = ctx.createBiquadFilter();
+    filtreBruit.type = "bandpass";
+    filtreBruit.frequency.value = 650;
+    filtreBruit.Q.value = 0.6;
+    const gainBruit = ctx.createGain();
+    gainBruit.gain.setValueAtTime(0, t0);
+    gainBruit.gain.linearRampToValueAtTime(0.05, t0 + 0.3);
+    gainBruit.gain.linearRampToValueAtTime(0.02, t0 + duree - 0.3);
+    gainBruit.gain.linearRampToValueAtTime(0, t0 + duree);
+    bruit.connect(filtreBruit).connect(gainBruit).connect(ctx.destination);
+    bruit.start(t0);
+  }
 }
 
 
@@ -2599,6 +2688,61 @@ class GestionPopulation {
     emplacement.data.note = "École construite par la communauté";
     return true;
   }
+}
+
+
+/* ==========================================================================
+   CONQUE — construireConque (module 2/5) ---------------------------------
+   ==========================================================================
+   Silhouette évoquant une vraie conque (corps spiralé effilé, aile évasée,
+   canal pointu), construite par révolution d'un profil (LatheGeometry) —
+   forme ORIGINALE inspirée de la silhouette générale d'un coquillage,
+   jamais la reproduction d'une photo précise. Réutilisée à grande échelle
+   pour la sculpture de l'aire de rassemblement, et à petite échelle comme
+   objet tenu en main par le joueur quand il souffle dedans (voir main()).
+   ========================================================================== */
+function construireConque(echelle = 1) {
+  const materiauConque = new THREE.MeshStandardMaterial({ color: 0xe6d9ba, roughness: 0.7 });
+
+  // Profil du corps : effilé à la pointe, qui s'élargit progressivement
+  // vers l'ouverture — silhouette spiralée simplifiée.
+  const profil = [
+    new THREE.Vector2(0.02, 0),
+    new THREE.Vector2(0.05, 0.15),
+    new THREE.Vector2(0.1, 0.35),
+    new THREE.Vector2(0.16, 0.55),
+    new THREE.Vector2(0.22, 0.75),
+    new THREE.Vector2(0.28, 0.95),
+    new THREE.Vector2(0.3, 1.1),
+    new THREE.Vector2(0.25, 1.22),
+    new THREE.Vector2(0.38, 1.38),
+  ].map((v) => v.multiplyScalar(echelle));
+
+  const corps = new THREE.Mesh(new THREE.LatheGeometry(profil, 14), materiauConque);
+  corps.rotation.z = Math.PI / 2; // couché : la pointe à gauche, l'ouverture à droite
+  corps.castShadow = true;
+
+  const groupe = new THREE.Group();
+  groupe.add(corps);
+
+  // Aile évasée près de l'ouverture (lèvre externe du coquillage).
+  const aile = new THREE.Mesh(new THREE.ConeGeometry(0.34 * echelle, 0.5 * echelle, 10, 1, true), materiauConque);
+  aile.scale.set(1, 0.35, 1.3);
+  aile.position.set(1.18 * echelle, 0.15 * echelle, 0.1 * echelle);
+  aile.rotation.z = -Math.PI / 2.3;
+  aile.rotation.y = 0.3;
+  aile.castShadow = true;
+  groupe.add(aile);
+
+  // Canal siphonal : petite pointe effilée à l'opposé de l'aile.
+  const canal = new THREE.Mesh(new THREE.ConeGeometry(0.06 * echelle, 0.32 * echelle, 8), materiauConque);
+  canal.position.set(1.3 * echelle, -0.05 * echelle, -0.08 * echelle);
+  canal.rotation.z = Math.PI / 2.4;
+  canal.rotation.y = -0.4;
+  canal.castShadow = true;
+  groupe.add(canal);
+
+  return groupe;
 }
 
 
@@ -3238,7 +3382,7 @@ function main() {
             libelle: `E : vendre la récolte à ${c.data.nom}`,
             action: () => {
               const { total, nbVendu } = cultures.vendreRecolte(c);
-              if (nbVendu > 0) population.ajouterRevenuCommunautaire(total);
+              if (nbVendu > 0) { population.ajouterRevenuCommunautaire(total); statsSemaine.argentGagne += total; }
               afficherMessage(nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment");
               (nbVendu > 0 ? effets.jouerPiece() : effets.jouerErreur());
               mettreAJourHudEconomie();
@@ -3355,7 +3499,7 @@ function main() {
         if (aire.position.distanceTo(pos) <= 4.5 && !rassemblementActif) {
           cibleCourante = {
             libelle: "E : sonner la conque pour rassembler le village",
-            action: () => declencherRassemblement(),
+            action: () => lancerSoufflageConque(),
           };
           break;
         }
@@ -3502,6 +3646,7 @@ function main() {
         const texte = conflits.resoudre(evenement, option.id, sceneManager.scene);
         panneauConflit.classList.remove("visible");
         afficherMessage(texte);
+        statsSemaine.conflitsResolus += 1;
         effets.jouerSucces();
       });
       grilleConflit.appendChild(bouton);
@@ -3527,11 +3672,48 @@ function main() {
   // conflits de voisinage) : les silhouettes de décor convergent vers l'aire
   // de rassemblement puis repartent après quelques secondes. Aucun sujet
   // politique ou dramatique n'est traité (voir cahier des charges).
+  // --- Statistiques de la semaine, remises à zéro à chaque conque sonnée --
+  // (module : bilans annoncés par la conque).
+  const statsSemaine = { argentGagne: 0, conflitsResolus: 0 };
+
+  // --- Séquence "souffler dans la conque" ---------------------------------
+  // Mouvement du joueur bloqué le temps de la prise en main réelle (de la
+  // statue à la bouche) et du souffle, avant que l'annonce ne démarre.
+  let soufflageEnCours = false;
+
+  function lancerSoufflageConque() {
+    if (soufflageEnCours) return;
+    soufflageEnCours = true;
+
+    const conquePortable = construireConque(0.22);
+    conquePortable.rotation.y = Math.PI / 2;
+    conquePortable.position.set(0.18, 1.35, 0.3); // de la main vers la bouche
+    personnage.groupe.add(conquePortable);
+
+    effets.jouerConque();
+
+    setTimeout(() => {
+      personnage.groupe.remove(conquePortable);
+      soufflageEnCours = false;
+      declencherRassemblement();
+    }, 2200);
+  }
+
   function declencherRassemblement() {
     rassemblementActif = true;
-    rassemblementMinuteur = 8; // secondes
-    hudZoneFlottant.textContent = "Le village se rassemble pour régler une affaire courante…";
+    rassemblementMinuteur = 9; // secondes
+
+    // Bilan annoncé : ventes/différends réglés depuis la dernière conque,
+    // et une "prochaine demande" (flaveur, tirée du catalogue de cultures).
+    const demande = MondeData.cultures[Math.floor(Math.random() * MondeData.cultures.length)];
+    const bilan = statsSemaine.argentGagne > 0 || statsSemaine.conflitsResolus > 0
+      ? `Bilan : ${statsSemaine.argentGagne} pièces de récoltes vendues, ${statsSemaine.conflitsResolus} différend(s) réglé(s). `
+      : "Bilan : une semaine calme. ";
+    hudZoneFlottant.textContent = bilan + `Le village recherche : ${demande.icone} ${demande.nom}.`;
     hudZoneFlottant.classList.add("visible");
+
+    statsSemaine.argentGagne = 0;
+    statsSemaine.conflitsResolus = 0;
   }
 
   function mettreAJourRassemblement(dt) {
@@ -3775,7 +3957,9 @@ function main() {
   function boucleAnimation() {
     const dt = Math.min(sceneManager.horloge.getDelta(), 0.05);
 
-    personnage.update(dt, sceneManager.camera);
+    // Pendant le soufflage de la conque, le joueur reste immobile (prise en
+    // main réelle de l'objet, de la main à la bouche) le temps du son.
+    if (!soufflageEnCours) personnage.update(dt, sceneManager.camera);
     sceneManager.mettreAJourCycleJourNuit(dt);
     foyers.forEach((f) => f.update(dt));
     cultures.update(sceneManager.tempsReelEcoule);

@@ -89,6 +89,10 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   revenu communautaire à la tribu (perte de main-d'œuvre pendant la
   médiation) — choisi à la place d'une mise en scène policière
   (arrestation, emprisonnement), jugée trop dramatique et sensible.
+- La conque a une forme plus réaliste (corps spiralé, aile évasée, canal
+  pointu). La sonner déclenche une vraie séquence : le joueur se fige, la
+  porte à sa bouche, un son synthétisé imite le souffle, puis l'annonce
+  donne un bilan (ventes, différends réglés) et une prochaine demande.
 
 **Module 6 — sauvegarde**
 - Progression sauvegardée automatiquement dans le navigateur
