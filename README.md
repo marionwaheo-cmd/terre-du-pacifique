@@ -85,6 +85,10 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
 - Chaque résolution est **toujours amicale** : aucune gravité, aucune
   issue dramatique, aucun sujet politique — conformément au cahier des
   charges du projet.
+- Un différend qui traîne plus de 45 secondes (icône ❗→⚠️) coûte un peu de
+  revenu communautaire à la tribu (perte de main-d'œuvre pendant la
+  médiation) — choisi à la place d'une mise en scène policière
+  (arrestation, emprisonnement), jugée trop dramatique et sensible.
 
 **Module 6 — sauvegarde**
 - Progression sauvegardée automatiquement dans le navigateur

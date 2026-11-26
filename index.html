@@ -178,6 +178,11 @@ traduite en géométries/matériaux Three.js originaux.
     aucune issue dramatique, aucun sujet politique — conformément au
     cahier des charges. Prêt à être enrichi (conséquences variées, relations
     entre habitants, nouveaux types de différends) sans changer l'architecture.
+  - Un différend qui traîne plus de 45 s (icône ❗→⚠️) coûte un peu de revenu
+    communautaire à la tribu (perte de main-d'œuvre pendant la médiation) :
+    une conséquence mécanique discrète, délibérément choisie à la place
+    d'une mise en scène policière (véhicules, arrestation, emprisonnement)
+    jugée trop dramatique et sensible dans le contexte réel.
 
 ----------------------------------------------------------------------------
  MODULE 6 — SAUVEGARDE
@@ -2631,10 +2636,18 @@ function creerSpriteEmoji(emoji, taille = 1.3) {
    habitants, nouveaux types de différends) sans changer son architecture.
    ========================================================================== */
 
+// Un différend non réglé au-delà de ce délai (secondes) coûte un peu de
+// main-d'œuvre à la tribu : les deux PNJ concernés restent "occupés" par
+// la médiation au lieu de participer à la vie économique — JAMAIS
+// d'arrestation ni d'emprisonnement, seulement une conséquence mécanique
+// discrète (voir points d'extension du module 5).
+const SEUIL_DIFFEREND_COUTEUX = 45;
+
 class GestionConflits {
-  constructor(terrain) {
+  constructor(terrain, population) {
     this.terrain = terrain;
-    this.indicateurs = new Map(); // conflitId -> { sprite, a, b }
+    this.population = population;
+    this.indicateurs = new Map(); // conflitId -> { sprite, a, b, conflit, age, couteuxApplique }
     this.prochainDelai = 25 + Math.random() * 20; // premier conflit assez tôt pour être visible
   }
 
@@ -2645,11 +2658,32 @@ class GestionConflits {
       this.prochainDelai = 70 + Math.random() * 90;
     }
     // Léger mouvement flottant des icônes de conflit, pour attirer l'œil
-    // sans être intrusif.
+    // sans être intrusif. Un différend qui traîne devient visuellement
+    // plus pressant (⚠️) et coûte un peu de revenu communautaire — une
+    // perte de main-d'œuvre discrète, sans dramatisation.
     const t = performance.now() / 1000;
-    this.indicateurs.forEach(({ sprite, base }) => {
-      sprite.position.y = base + Math.sin(t * 2) * 0.12;
+    this.indicateurs.forEach((entree) => {
+      entree.sprite.position.y = entree.base + Math.sin(t * 2) * 0.12;
+      entree.age += dt;
+      if (entree.age >= SEUIL_DIFFEREND_COUTEUX && !entree.couteuxApplique) {
+        entree.couteuxApplique = true;
+        const tribu = this.population?.tribus.find((tr) => tr.id === entree.conflit.zoneId);
+        if (tribu) tribu.revenuMenage = Math.max(0, tribu.revenuMenage - 20);
+        this._remplacerIcone(entree, "⚠️");
+      }
     });
+  }
+
+  // Remplace l'icône flottante d'un différend (ex. ❗ → ⚠️ une fois qu'il
+  // traîne), sans recréer tout le reste de l'entrée.
+  _remplacerIcone(entree, emoji) {
+    entree.sprite.material.map.dispose();
+    entree.sprite.material.dispose();
+    const nouveauSprite = creerSpriteEmoji(emoji);
+    nouveauSprite.position.copy(entree.sprite.position);
+    entree.sprite.parent?.add(nouveauSprite);
+    entree.sprite.removeFromParent();
+    entree.sprite = nouveauSprite;
   }
 
   _declencherConflitAleatoire(scene) {
@@ -2685,7 +2719,10 @@ class GestionConflits {
     sprite.position.set(milieu.x, milieu.y + 2.3, milieu.z);
     scene.add(sprite);
 
-    this.indicateurs.set(conflit.id, { sprite, base: milieu.y + 2.3, position: sprite.position, a, b });
+    this.indicateurs.set(conflit.id, {
+      sprite, base: milieu.y + 2.3, position: sprite.position, a, b,
+      conflit, age: 0, couteuxApplique: false,
+    });
   }
 
   // Conflits ouverts dont l'icône est proche de `position` (le joueur).
@@ -3039,7 +3076,7 @@ function main() {
   const joueur = { argent: 50, engrais: 1, inventaire: {}, aUneArme: false };
   const cultures = new GestionCultures(terrain.parcelles, joueur);
   const population = new GestionPopulation(terrain, joueur);
-  const conflits = new GestionConflits(terrain);
+  const conflits = new GestionConflits(terrain, population);
   const effets = new EffetsSonores();
   const faune = new GestionFaune(sceneManager.scene, terrain.obtenirHauteurSol, population.tribus);
 
