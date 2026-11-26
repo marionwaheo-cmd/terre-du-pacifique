@@ -372,10 +372,23 @@ traduite en géométries/matériaux Three.js originaux.
   #hud-interaction.visible { opacity: 1; }
 
   /* --- Panneau de personnalisation (module 2) ------------------------- */
-  #bouton-tenue, #bouton-musique, #bouton-multi, #bouton-reinitialiser {
+  /* Barre flexible (et non des offsets `right` fixes en pixels) pour que les
+     boutons se replient naturellement sur les petits écrans (mobile) au
+     lieu de déborder hors de l'écran. */
+  #barre-boutons-haut {
     position: fixed;
     top: 12px;
     right: 12px;
+    left: 12px;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+  #barre-boutons-haut > button { pointer-events: auto; }
+  #bouton-tenue, #bouton-musique, #bouton-multi, #bouton-reinitialiser {
     padding: 8px 14px;
     background: var(--couleur-fond-ui);
     border: 1px solid var(--couleur-accent);
@@ -383,18 +396,22 @@ traduite en géométries/matériaux Three.js originaux.
     color: var(--couleur-texte);
     font-size: 0.8rem;
     cursor: pointer;
-    z-index: 20;
   }
-  #bouton-musique { right: 118px; }
   #bouton-musique.actif { border-color: #6fcf97; }
-  #bouton-multi { right: 226px; }
   #bouton-multi.actif { border-color: #6fcf97; }
-  #bouton-reinitialiser { right: 334px; padding: 8px 12px; }
+  #bouton-reinitialiser { padding: 8px 12px; }
+  @media (max-width: 480px) {
+    #bouton-tenue, #bouton-musique, #bouton-multi, #bouton-reinitialiser {
+      padding: 6px 10px;
+      font-size: 0.7rem;
+    }
+  }
   #panneau-multi {
     position: fixed;
     top: 56px;
-    right: 226px;
+    right: 12px;
     width: 250px;
+    max-width: calc(100vw - 24px);
     padding: 14px;
     background: var(--couleur-fond-ui);
     border-radius: 12px;
@@ -671,10 +688,12 @@ traduite en géométries/matériaux Three.js originaux.
 <div id="hud-interaction"></div>
 <div id="avertissement" id="avertissement-perf"></div>
 
-<button id="bouton-musique" title="Activer/couper la musique d'ambiance">🎵 Musique</button>
-<button id="bouton-tenue" title="Choisir la tenue (touche I)">👕 Tenue</button>
-<button id="bouton-multi" title="Jouer avec un proche">👥 Multi</button>
-<button id="bouton-reinitialiser" title="Effacer la sauvegarde et recommencer">🗑️</button>
+<div id="barre-boutons-haut">
+  <button id="bouton-multi" title="Jouer avec un proche">👥 Multi</button>
+  <button id="bouton-musique" title="Activer/couper la musique d'ambiance">🎵 Musique</button>
+  <button id="bouton-tenue" title="Choisir la tenue (touche I)">👕 Tenue</button>
+  <button id="bouton-reinitialiser" title="Effacer la sauvegarde et recommencer">🗑️</button>
+</div>
 <div id="panneau-multi">
   <h3>Jouer ensemble</h3>
   <input id="multi-code" placeholder="code du salon (ex: ILE-4821)" maxlength="12">
@@ -799,7 +818,7 @@ const MondeData = {
         { id: "cooperative_agricole", type: "commerce", position: { x: 6, z: -6 },
           commerce: { nom: "Coopérative agricole", achete: ["igname", "pasteque", "tomate"], inventaire: {}, caisse: 0 } },
         { id: "epicerie", type: "commerce", position: { x: 10, z: 4 },
-          commerce: { nom: "Épicerie du village", vend: ["outils", "semences", "engrais"], inventaire: {}, caisse: 0 } },
+          commerce: { nom: "Épicerie du village", vend: ["outils", "semences", "engrais", "canne_peche"], inventaire: {}, caisse: 0 } },
         { id: "ecole_future", type: "emplacement_reserve", position: { x: -14, z: 6 },
           commerce: null, note: "Emplacement réservé — construction d'école (module population)" },
         { id: "armurerie", type: "commerce", position: { x: 15, z: -2 },
@@ -969,9 +988,40 @@ const MondeData = {
   // rôdent la nuit, pour nourrir sa tribu après cuisson au foyer.
   armement: { fusil_chasse: { nom: "Fusil de chasse", prixAchat: 150 } },
 
+  // --- PÊCHE (module 13) ---------------------------------------------------
+  // Pêche simplifiée : une canne suffit depuis un ponton (mare ou bord de
+  // mer). Pas de simulation de poissons individuels ni de bateau navigable
+  // pour l'instant — un bateau décoratif amarré au quai principal pose les
+  // bases visuelles d'un futur module "navigation".
+  peche: {
+    canneAPeche: { nom: "Canne à pêche", prixAchat: 80 },
+    gainMare: [4, 10],
+    gainMer: [10, 22],
+    dureeAttente: 2.5,
+  },
+
   // Icônes des objets d'inventaire qui ne sont pas des cultures (évite de
   // dupliquer le catalogue de cultures pour de simples pictogrammes HUD).
-  iconesObjets: { viande_sanglier: "🥩", viande_grillee: "🍖" },
+  iconesObjets: {
+    viande_sanglier: "🥩", viande_cerf: "🥩", viande_notou: "🍗", viande_roussette: "🍗",
+    viande_grillee: "🍖",
+  },
+
+  // --- GIBIER RÉGLEMENTÉ (module 12) ---------------------------------------
+  // Basé sur une recherche réelle (voir README) : en Nouvelle-Calédonie, le
+  // cerf rusa (espèce invasive) est régulé toute l'année, tandis que le
+  // notou et la roussette sont des espèces PROTÉGÉES, chassables seulement
+  // les week-ends du mois d'avril — le reste de l'année, la chasse, le
+  // transport et la détention sont interdits. Ici, la "saison d'avril" est
+  // représentée de façon stylisée par une courte fenêtre qui revient
+  // périodiquement dans le calendrier accéléré du jeu (voir `estSaisonGibierReglemente`
+  // dans `main()`) : les dates réelles varient selon les provinces et les
+  // années — à vérifier auprès des codes de l'environnement provinciaux.
+  gibier: [
+    { id: "cerf", nom: "cerf", icone: "🦌", viandeId: "viande_cerf", reglemente: false },
+    { id: "notou", nom: "notou", icone: "🕊️", viandeId: "viande_notou", reglemente: true },
+    { id: "roussette", nom: "roussette", icone: "🦇", viandeId: "viande_roussette", reglemente: true, nocturne: true },
+  ],
 
   // --- ÉVÉNEMENTS / CONFLITS (module 5) -----------------------------------
   // Rempli à l'exécution par `GestionConflits`. Volontairement limité à des
@@ -1233,12 +1283,19 @@ class TerrainBuilder {
     this.commerces = [];           // { id, data (commerce), position, zoneId } — module 3
     this.batiments = [];           // { id, data, groupe, corps, zoneId } — tous les bâtiments
     this.pnjs = [];                 // { id, data, groupe, home: Vector3, zoneId } — module 4
+    this.lieuxPeche = [];           // { position: Vector3, mer: bool } — module 13
+    this.torches = [];              // { flamme, lumiere, age } — module 16
+    this.mares = [];                // { x, z, rayon } — calculé avant la végétation/faune
+                                     // pour qu'aucun arbre ni animal ne puisse apparaître dans l'eau
 
     this._genererSolBase();
     MondeData.zones.forEach((zone) => this._genererZone(zone));
     this._genererRoutes();
-    this._genererVegetationDeFond();
     this._genererMaresHabitations();
+    this._genererVegetationDeFond();
+    this._genererHibiscusHabitations();
+    this._genererQuaiPeche();
+    this._genererTorchesHabitations();
   }
 
   // --- Petits points d'eau douce à proximité des habitations (module 10) --
@@ -1258,6 +1315,7 @@ class TerrainBuilder {
       const x = zone.centre.x + Math.cos(angle) * rayon;
       const z = zone.centre.z + Math.sin(angle) * rayon;
       const rayonMare = THREE.MathUtils.randFloat(3, 4.5);
+      this.mares.push({ x, z, rayon: rayonMare });
       const mare = new THREE.Mesh(new THREE.CircleGeometry(rayonMare, 20), materiauMare);
       mare.rotation.x = -Math.PI / 2;
       mare.position.set(x, this.obtenirHauteurSol(x, z) + 0.03, z);
@@ -1273,7 +1331,82 @@ class TerrainBuilder {
       berge.rotation.x = -Math.PI / 2;
       berge.position.set(x, this.obtenirHauteurSol(x, z) + 0.02, z);
       this.groupeMonde.add(berge);
+
+      // Petit ponton de pêche en bois sur le bord de la mare (module 13).
+      const ponton = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.08, 2.2),
+        new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9 })
+      );
+      const anglePonton = angle + Math.PI; // côté berge, face à la mare
+      const xPonton = x + Math.cos(anglePonton) * (rayonMare - 0.6);
+      const zPonton = z + Math.sin(anglePonton) * (rayonMare - 0.6);
+      ponton.position.set(xPonton, this.obtenirHauteurSol(xPonton, zPonton) + 0.1, zPonton);
+      ponton.rotation.y = anglePonton;
+      this.groupeMonde.add(ponton);
+      this.lieuxPeche.push({ position: new THREE.Vector3(x, this.obtenirHauteurSol(x, z), z), mer: false });
     });
+  }
+
+  // --- Quai de pêche en mer + bateau décoratif (module 13) ----------------
+  // Pose les bases visuelles d'un futur module "navigation" : pour l'instant
+  // le bateau est amarré (non pilotable), mais le quai permet déjà de pêcher
+  // en mer (meilleures prises qu'aux mares).
+  _genererQuaiPeche() {
+    const x = -40, z = 95;
+    const h = this.obtenirHauteurSol(x, z);
+    const quai = new THREE.Group();
+
+    const ponton = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.15, 6),
+      new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9 })
+    );
+    ponton.position.set(0, 0.1, 2);
+    quai.add(ponton);
+    for (let i = 0; i < 4; i++) {
+      const pilotis = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 1, 6),
+        new THREE.MeshStandardMaterial({ color: 0x4a3420, roughness: 1 })
+      );
+      pilotis.position.set(i % 2 === 0 ? -1 : 1, -0.4, i < 2 ? 0 : 4);
+      quai.add(pilotis);
+    }
+
+    // Petite rambarde en bois côté eau : là où le joueur se tient debout
+    // pour pêcher (inspiré d'un ponton de pêche classique).
+    const materiauBois = new THREE.MeshStandardMaterial({ color: 0x8a6a42, roughness: 0.9 });
+    const traverse = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 0.06), materiauBois);
+    traverse.position.set(0, 0.5, -0.9);
+    quai.add(traverse);
+    [-1, 1].forEach((dx) => {
+      const poteau = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 6), materiauBois);
+      poteau.position.set(dx, 0.35, -0.9);
+      quai.add(poteau);
+    });
+
+    // Bateau décoratif amarré (coque + banc + petit mât), formes originales.
+    const bateau = new THREE.Group();
+    const materiauCoque = new THREE.MeshStandardMaterial({ color: 0x2f5f6b, roughness: 0.7 });
+    const coque = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 2.4, 4, 8), materiauCoque);
+    coque.rotation.z = Math.PI / 2;
+    coque.scale.set(1, 0.55, 1);
+    coque.position.y = 0.3;
+    bateau.add(coque);
+    const mat = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.05, 1.6, 6),
+      new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9 })
+    );
+    mat.position.set(0, 1, 0);
+    bateau.add(mat);
+    const plaque = this._genererEtiquette("NC", new THREE.Vector3(0, 0, 0), 0);
+    plaque.scale.set(1.6, 0.5, 1);
+    plaque.position.set(1.1, 0.3, 0);
+    bateau.add(plaque);
+    bateau.position.set(2.2, 0, 1);
+    quai.add(bateau);
+
+    quai.position.set(x, h, z);
+    this.groupeMonde.add(quai);
+    this.lieuxPeche.push({ position: new THREE.Vector3(x, h, z + 2), mer: true });
   }
 
   // --- Sol principal avec léger relief (bruit procédural simple) ---------
@@ -1815,6 +1948,7 @@ class TerrainBuilder {
       { de: { x: 0, z: 0 }, a: { x: 44, z: -38 } },
       { de: { x: 0, z: 0 }, a: { x: -8, z: 48 } },
     ];
+    this._segmentsRoutes = segments; // réutilisé par la végétation (dégage les chemins)
     segments.forEach(({ de, a }) => {
       const dx = a.x - de.x, dz = a.z - de.z;
       const longueur = Math.sqrt(dx * dx + dz * dz);
@@ -1862,20 +1996,266 @@ class TerrainBuilder {
     return groupe;
   }
 
+  // --- Cocotier : tronc fin légèrement incurvé + palmes radiales ----------
+  // (silhouette distincte du "petit arbre tropical" générique existant).
+  _construireCocotier() {
+    const groupe = new THREE.Group();
+    const materiauTronc = new THREE.MeshStandardMaterial({ color: 0x8a7050, roughness: 0.9 });
+    const materiauPalme = new THREE.MeshStandardMaterial({ color: 0x3a8a4a, roughness: 0.8, side: THREE.DoubleSide });
+    const materiauNoix = new THREE.MeshStandardMaterial({ color: 0x5a4028, roughness: 0.9 });
+
+    const hauteur = THREE.MathUtils.randFloat(3.2, 4.8);
+    const nbSegments = 6;
+    const courbure = THREE.MathUtils.randFloat(0.15, 0.4) * (Math.random() < 0.5 ? 1 : -1);
+    let sommet = new THREE.Vector3(0, 0, 0);
+    for (let i = 0; i < nbSegments; i++) {
+      const t0 = i / nbSegments, t1 = (i + 1) / nbSegments;
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * (1 - t1 * 0.5), 0.1 * (1 - t0 * 0.5), hauteur / nbSegments, 6), materiauTronc);
+      const y0 = t0 * hauteur, y1 = t1 * hauteur;
+      const x0 = Math.sin(t0 * Math.PI * 0.5) * courbure * t0, x1 = Math.sin(t1 * Math.PI * 0.5) * courbure * t1;
+      seg.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0);
+      seg.rotation.z = Math.atan2(x1 - x0, y1 - y0);
+      seg.castShadow = true;
+      groupe.add(seg);
+      sommet = new THREE.Vector3(x1, y1, 0);
+    }
+
+    const nbPalmes = 7;
+    for (let i = 0; i < nbPalmes; i++) {
+      const angle = (i / nbPalmes) * Math.PI * 2;
+      const palme = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 1.5), materiauPalme);
+      palme.position.set(sommet.x + Math.cos(angle) * 0.5, sommet.y - 0.1, Math.sin(angle) * 0.5);
+      palme.rotation.y = angle;
+      palme.rotation.x = -0.55 - Math.random() * 0.25;
+      palme.castShadow = true;
+      groupe.add(palme);
+    }
+    // Petites noix de coco groupées sous le feuillage.
+    for (let i = 0; i < 3; i++) {
+      const noix = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), materiauNoix);
+      noix.position.set(sommet.x + THREE.MathUtils.randFloatSpread(0.25), sommet.y - 0.3, THREE.MathUtils.randFloatSpread(0.25));
+      groupe.add(noix);
+    }
+    return groupe;
+  }
+
+  // --- Fougère arborescente : tronc fibreux court + grandes frondes --------
+  _construireFougereArborescente() {
+    const groupe = new THREE.Group();
+    const materiauTronc = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 1 });
+    const materiauFronde = new THREE.MeshStandardMaterial({ color: 0x4caf5a, roughness: 0.75, side: THREE.DoubleSide });
+
+    const hauteurTronc = THREE.MathUtils.randFloat(0.9, 1.5);
+    const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, hauteurTronc, 8), materiauTronc);
+    tronc.position.y = hauteurTronc / 2;
+    tronc.castShadow = true;
+    groupe.add(tronc);
+
+    const nbFrondes = 9;
+    for (let i = 0; i < nbFrondes; i++) {
+      const angle = (i / nbFrondes) * Math.PI * 2;
+      const fronde = new THREE.Group();
+      // Chaque fronde = une série de petites folioles le long d'une tige.
+      const nbFolioles = 5;
+      for (let j = 0; j < nbFolioles; j++) {
+        const t = j / nbFolioles;
+        const foliole = new THREE.Mesh(new THREE.ConeGeometry(0.1 - t * 0.06, 0.3, 4), materiauFronde);
+        foliole.position.set(0, 0, 0.3 + t * 0.9);
+        foliole.rotation.x = Math.PI / 2;
+        foliole.rotation.z = (j % 2 === 0 ? 1 : -1) * 0.5;
+        fronde.add(foliole);
+      }
+      fronde.position.y = hauteurTronc;
+      fronde.rotation.y = angle;
+      fronde.rotation.x = -0.5 - Math.random() * 0.2;
+      groupe.add(fronde);
+    }
+    return groupe;
+  }
+
+  // --- Arbre fruitier générique (oranger, mandarinier, papayer, etc.) -----
+  // Même silhouette simple que l'arbre générique, mais avec de petits fruits
+  // colorés accrochés au feuillage — un paramètre de couleur suffit à
+  // distinguer les espèces sans multiplier les géométries.
+  _construireArbreFruitier(couleurFruit, papaye = false) {
+    const groupe = new THREE.Group();
+    const materiauTronc = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
+    const materiauFeuillage = new THREE.MeshStandardMaterial({ color: 0x3a7a3f, roughness: 0.85 });
+    const materiauFruit = new THREE.MeshStandardMaterial({ color: couleurFruit, roughness: 0.6 });
+
+    if (papaye) {
+      // Papayer : tronc fin et droit, bouquet de feuilles larges au sommet.
+      const hauteurTronc = THREE.MathUtils.randFloat(1.8, 2.6);
+      const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, hauteurTronc, 6), materiauTronc);
+      tronc.position.y = hauteurTronc / 2;
+      tronc.castShadow = true;
+      groupe.add(tronc);
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const feuille = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.02, 0.18), materiauFeuillage);
+        feuille.position.set(Math.cos(angle) * 0.3, hauteurTronc, Math.sin(angle) * 0.3);
+        feuille.rotation.y = angle;
+        feuille.rotation.x = -0.3;
+        groupe.add(feuille);
+      }
+      for (let i = 0; i < 4; i++) {
+        const fruit = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.14, 4, 6), materiauFruit);
+        fruit.position.set(THREE.MathUtils.randFloatSpread(0.15), hauteurTronc - 0.3 - i * 0.12, THREE.MathUtils.randFloatSpread(0.15));
+        groupe.add(fruit);
+      }
+      return groupe;
+    }
+
+    const hauteurTronc = THREE.MathUtils.randFloat(1.0, 1.6);
+    const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, hauteurTronc, 6), materiauTronc);
+    tronc.position.y = hauteurTronc / 2;
+    tronc.castShadow = true;
+    groupe.add(tronc);
+
+    const feuillage = new THREE.Mesh(new THREE.IcosahedronGeometry(THREE.MathUtils.randFloat(0.6, 0.9), 0), materiauFeuillage);
+    feuillage.position.y = hauteurTronc + 0.5;
+    feuillage.castShadow = true;
+    groupe.add(feuillage);
+
+    const nbFruits = 5 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < nbFruits; i++) {
+      const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), materiauFruit);
+      const angle = Math.random() * Math.PI * 2;
+      const rayon = 0.5 + Math.random() * 0.3;
+      fruit.position.set(
+        Math.cos(angle) * rayon,
+        hauteurTronc + 0.3 + Math.random() * 0.5,
+        Math.sin(angle) * rayon
+      );
+      groupe.add(fruit);
+    }
+    return groupe;
+  }
+
+  // --- Pied d'hibiscus fleuri (plusieurs coloris) --------------------------
+  _construireHibiscus(couleurFleur) {
+    const groupe = new THREE.Group();
+    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x2f6a38, roughness: 0.85, side: THREE.DoubleSide });
+    const materiauFleur = new THREE.MeshStandardMaterial({ color: couleurFleur, roughness: 0.5, side: THREE.DoubleSide });
+    const materiauCoeur = new THREE.MeshStandardMaterial({ color: 0xffd34d, roughness: 0.6 });
+
+    const nbTouffes = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < nbTouffes; i++) {
+      const feuillage = new THREE.Mesh(new THREE.IcosahedronGeometry(THREE.MathUtils.randFloat(0.3, 0.45), 0), materiauFeuille);
+      feuillage.position.set(THREE.MathUtils.randFloatSpread(0.4), THREE.MathUtils.randFloat(0.3, 0.55), THREE.MathUtils.randFloatSpread(0.4));
+      feuillage.castShadow = true;
+      groupe.add(feuillage);
+    }
+    const nbFleurs = 4 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < nbFleurs; i++) {
+      const fleur = new THREE.Group();
+      for (let p = 0; p < 5; p++) {
+        const petale = new THREE.Mesh(new THREE.CircleGeometry(0.07, 8), materiauFleur);
+        petale.rotation.z = (p / 5) * Math.PI * 2;
+        petale.position.set(Math.cos((p / 5) * Math.PI * 2) * 0.05, Math.sin((p / 5) * Math.PI * 2) * 0.05, 0);
+        fleur.add(petale);
+      }
+      const coeur = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), materiauCoeur);
+      fleur.add(coeur);
+      fleur.position.set(THREE.MathUtils.randFloatSpread(0.5), THREE.MathUtils.randFloat(0.35, 0.65), THREE.MathUtils.randFloatSpread(0.5));
+      fleur.rotation.x = -Math.PI / 2 + THREE.MathUtils.randFloatSpread(0.6);
+      fleur.rotation.z = Math.random() * Math.PI;
+      groupe.add(fleur);
+    }
+    return groupe;
+  }
+
+  // --- Pieds d'hibiscus fleuris autour des habitations (module 15) --------
+  _genererHibiscusHabitations() {
+    const couleurs = [0xe0376b, 0xf2a93c, 0xf5e642, 0xb24ad9, 0xf25a3c, 0xffffff];
+    MondeData.zones.filter((z) => z.type === "tribu" || z.type === "village").forEach((zone) => {
+      const nb = 6 + Math.floor(Math.random() * 5);
+      for (let i = 0; i < nb; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const rayon = Math.max(zone.taille.largeur, zone.taille.profondeur) * (0.42 + Math.random() * 0.25);
+        const x = zone.centre.x + Math.cos(angle) * rayon;
+        const z = zone.centre.z + Math.sin(angle) * rayon;
+        if (this.mares.some((m) => Math.hypot(x - m.x, z - m.z) < m.rayon + 1)) continue; // jamais de fleurs dans l'eau
+        const couleur = couleurs[Math.floor(Math.random() * couleurs.length)];
+        const hibiscus = this._construireHibiscus(couleur);
+        hibiscus.position.set(x, this.obtenirHauteurSol(x, z), z);
+        hibiscus.rotation.y = Math.random() * Math.PI * 2;
+        this.groupeMonde.add(hibiscus);
+      }
+    });
+  }
+
+  // Distance d'un point au segment de route le plus proche (pour ne jamais
+  // obstruer les chemins que les habitants empruntent).
+  _distanceAuxRoutes(x, z) {
+    let distanceMin = Infinity;
+    this._segmentsRoutes.forEach(({ de, a }) => {
+      const dx = a.x - de.x, dz = a.z - de.z;
+      const longueurCarree = dx * dx + dz * dz;
+      let t = longueurCarree > 0 ? ((x - de.x) * dx + (z - de.z) * dz) / longueurCarree : 0;
+      t = THREE.MathUtils.clamp(t, 0, 1);
+      const px = de.x + t * dx, pz = de.z + t * dz;
+      const d = Math.hypot(x - px, z - pz);
+      if (d < distanceMin) distanceMin = d;
+    });
+    return distanceMin;
+  }
+
+  // --- Torches décoratives autour des habitations (module 16) -------------
+  // S'allument/s'éteignent AUTOMATIQUEMENT avec le cycle jour/nuit (aucune
+  // interaction requise, contrairement aux foyers) — purement ambiance.
+  _construireTorche() {
+    const groupe = new THREE.Group();
+    const piquet = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.04, 1.1, 6),
+      new THREE.MeshStandardMaterial({ color: 0x4a3420, roughness: 0.9 })
+    );
+    piquet.position.y = 0.55;
+    groupe.add(piquet);
+    const materiauFlamme = new THREE.MeshBasicMaterial({ color: 0xff9a3c, transparent: true, opacity: 0 });
+    const flamme = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 8), materiauFlamme);
+    flamme.position.y = 1.25;
+    groupe.add(flamme);
+    const lumiere = new THREE.PointLight(0xff8a3c, 0, 4, 2);
+    lumiere.position.y = 1.25;
+    groupe.add(lumiere);
+    this.groupeMonde.add(groupe);
+    this.torches.push({ flamme, lumiere, age: Math.random() * 10 });
+  }
+
+  _genererTorchesHabitations() {
+    this.torches = [];
+    MondeData.zones.filter((z) => z.type === "tribu" || z.type === "village").forEach((zone) => {
+      const nb = 4 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < nb; i++) {
+        const angle = (i / nb) * Math.PI * 2 + Math.random() * 0.4;
+        const rayon = Math.max(zone.taille.largeur, zone.taille.profondeur) * 0.52;
+        const x = zone.centre.x + Math.cos(angle) * rayon;
+        const z = zone.centre.z + Math.sin(angle) * rayon;
+        const torche = this._construireTorche();
+        const dernier = this.torches[this.torches.length - 1];
+        dernier.flamme.parent.position.set(x, this.obtenirHauteurSol(x, z), z);
+      }
+    });
+  }
+
   _genererVegetationDeFond() {
     const groupeVegetation = new THREE.Group();
     groupeVegetation.name = "VegetationDeFond";
     const materiauTronc = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
     const materiauFeuillage = new THREE.MeshStandardMaterial({ color: 0x2e6b3a, roughness: 0.9 });
-
     const materiauBuisson = new THREE.MeshStandardMaterial({ color: 0x3c7a42, roughness: 0.95 });
+    const couleursFruits = [0xf2932c, 0xffcf3f, 0xe0423a]; // orange, mandarine, framboise/agrumes
 
-    const nbArbres = 230;
+    // Densité maximale : on remplit tout l'espace libre (hors zones et hors
+    // chemins), pour qu'il ne reste quasiment plus de terrain vide — seuls
+    // les sentiers/routes restent dégagés pour les déplacements.
+    const nbArbres = 650;
     let place = 0, tentatives = 0;
-    while (place < nbArbres && tentatives < nbArbres * 6) {
+    while (place < nbArbres && tentatives < nbArbres * 8) {
       tentatives++;
-      const x = THREE.MathUtils.randFloatSpread(380);
-      const z = THREE.MathUtils.randFloatSpread(380);
+      const x = THREE.MathUtils.randFloatSpread(400);
+      const z = THREE.MathUtils.randFloatSpread(400);
 
       // Évite de placer des arbres au centre des zones définies.
       const dansUneZone = MondeData.zones.some((zone) => {
@@ -1883,23 +2263,38 @@ class TerrainBuilder {
         const dz = Math.abs(z - zone.centre.z);
         return dx < zone.taille.largeur * 0.75 && dz < zone.taille.profondeur * 0.75;
       });
-      if (dansUneZone || z > 120) { continue; }
+      if (dansUneZone || z > 120) continue;
+      if (this._distanceAuxRoutes(x, z) < 2.4) continue; // dégage les chemins
+      // Jamais d'arbre dans une mare ni au bord immédiat (l'eau reste de l'eau).
+      if (this.mares.some((m) => Math.hypot(x - m.x, z - m.z) < m.rayon + 1.2)) continue;
 
       const h = this.obtenirHauteurSol(x, z);
+      const tirage = Math.random();
 
-      // Un arbre sur quatre environ est un bananier, pour varier le décor.
-      if (Math.random() < 0.2) {
+      if (tirage < 0.14) {
         const bananier = this._construireBananier();
         bananier.position.set(x, h, z);
         bananier.rotation.y = Math.random() * Math.PI * 2;
         groupeVegetation.add(bananier);
-        place++;
-        continue;
-      }
-
-      // Environ un placement sur cinq est un simple buisson bas (densifie
-      // le sous-bois sans ajouter de gros volumes).
-      if (Math.random() < 0.2) {
+      } else if (tirage < 0.26) {
+        const cocotier = this._construireCocotier();
+        cocotier.position.set(x, h, z);
+        cocotier.rotation.y = Math.random() * Math.PI * 2;
+        groupeVegetation.add(cocotier);
+      } else if (tirage < 0.34) {
+        const fougere = this._construireFougereArborescente();
+        fougere.position.set(x, h, z);
+        fougere.rotation.y = Math.random() * Math.PI * 2;
+        groupeVegetation.add(fougere);
+      } else if (tirage < 0.5) {
+        const papaye = Math.random() < 0.4;
+        const fruitier = this._construireArbreFruitier(
+          couleursFruits[Math.floor(Math.random() * couleursFruits.length)], papaye
+        );
+        fruitier.position.set(x, h, z);
+        fruitier.rotation.y = Math.random() * Math.PI * 2;
+        groupeVegetation.add(fruitier);
+      } else if (tirage < 0.62) {
         const buisson = new THREE.Group();
         const nbTouffes = 2 + Math.floor(Math.random() * 3);
         for (let i = 0; i < nbTouffes; i++) {
@@ -1918,29 +2313,51 @@ class TerrainBuilder {
         buisson.position.set(x, h, z);
         buisson.rotation.y = Math.random() * Math.PI * 2;
         groupeVegetation.add(buisson);
-        place++;
-        continue;
+      } else if (tirage < 0.7) {
+        // Petit framboisier bas : touffe de tiges fines avec baies rouges.
+        const framboisier = new THREE.Group();
+        const materiauTige = new THREE.MeshStandardMaterial({ color: 0x4a6a3a, roughness: 0.9 });
+        const materiauBaie = new THREE.MeshStandardMaterial({ color: 0xd1283f, roughness: 0.5 });
+        for (let i = 0; i < 4; i++) {
+          const tige = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.4, 5), materiauTige);
+          tige.position.set(THREE.MathUtils.randFloatSpread(0.2), 0.2, THREE.MathUtils.randFloatSpread(0.2));
+          framboisier.add(tige);
+          if (Math.random() < 0.7) {
+            const baie = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), materiauBaie);
+            baie.position.set(tige.position.x, 0.38, tige.position.z);
+            framboisier.add(baie);
+          }
+        }
+        framboisier.position.set(x, h, z);
+        groupeVegetation.add(framboisier);
+      } else if (tirage < 0.78) {
+        const hibiscus = this._construireHibiscus(
+          [0xe0376b, 0xf2a93c, 0xf5e642, 0xb24ad9, 0xffffff][Math.floor(Math.random() * 5)]
+        );
+        hibiscus.position.set(x, h, z);
+        hibiscus.rotation.y = Math.random() * Math.PI * 2;
+        groupeVegetation.add(hibiscus);
+      } else {
+        const arbre = new THREE.Group();
+        const hauteurTronc = THREE.MathUtils.randFloat(1.2, 2.2);
+        const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, hauteurTronc, 6), materiauTronc);
+        tronc.position.y = hauteurTronc / 2;
+        tronc.castShadow = true;
+        arbre.add(tronc);
+
+        const feuillage = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(THREE.MathUtils.randFloat(0.9, 1.6), 0),
+          materiauFeuillage
+        );
+        feuillage.position.y = hauteurTronc + 0.6;
+        feuillage.castShadow = true;
+        feuillage.scale.y = 1.3;
+        arbre.add(feuillage);
+
+        arbre.position.set(x, h, z);
+        arbre.rotation.y = Math.random() * Math.PI * 2;
+        groupeVegetation.add(arbre);
       }
-
-      const arbre = new THREE.Group();
-      const hauteurTronc = THREE.MathUtils.randFloat(1.2, 2.2);
-      const tronc = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, hauteurTronc, 6), materiauTronc);
-      tronc.position.y = hauteurTronc / 2;
-      tronc.castShadow = true;
-      arbre.add(tronc);
-
-      const feuillage = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(THREE.MathUtils.randFloat(0.9, 1.6), 0),
-        materiauFeuillage
-      );
-      feuillage.position.y = hauteurTronc + 0.6;
-      feuillage.castShadow = true;
-      feuillage.scale.y = 1.3; // silhouette évoquant un cocotier/arbre tropical stylisé
-      arbre.add(feuillage);
-
-      arbre.position.set(x, h, z);
-      arbre.rotation.y = Math.random() * Math.PI * 2;
-      groupeVegetation.add(arbre);
       place++;
     }
     this.groupeMonde.add(groupeVegetation);
@@ -2199,8 +2616,9 @@ class Foyer {
    ========================================================================== */
 
 class Personnage {
-  constructor(scene, obtenirHauteurSol) {
+  constructor(scene, obtenirHauteurSol, mares = []) {
     this.obtenirHauteurSol = obtenirHauteurSol;
+    this.mares = mares; // on ne marche jamais dans l'eau, juste au bord (module 17)
     this.vitesseDeplacement = 9; // unités/seconde
     this.vitesseRotation = 10;
 
@@ -2319,8 +2737,29 @@ class Personnage {
     const deplacement = this._vitesseActuelle.clone().multiplyScalar(dt);
     const limite = 205; // reste dans les limites du sol généré
 
-    const nouvelleX = THREE.MathUtils.clamp(this.groupe.position.x + deplacement.x, -limite, limite);
-    const nouvelleZ = THREE.MathUtils.clamp(this.groupe.position.z + deplacement.z, -limite, limite);
+    let nouvelleX = THREE.MathUtils.clamp(this.groupe.position.x + deplacement.x, -limite, limite);
+    let nouvelleZ = THREE.MathUtils.clamp(this.groupe.position.z + deplacement.z, -limite, limite);
+
+    // Jamais dans l'eau : on peut s'approcher du bord (plage ou mare), mais
+    // pas y marcher dedans — sauf sur le ponton du quai de pêche, qui lui
+    // avance volontairement au-dessus de l'eau (voir `_genererQuaiPeche`).
+    const limiteCotiere = 58;
+    const surLePonton = Math.abs(nouvelleX - (-40)) < 1.3 && nouvelleZ > limiteCotiere - 4;
+    if (surLePonton) {
+      if (nouvelleZ > 102) nouvelleZ = 102;
+    } else if (nouvelleZ > limiteCotiere) {
+      nouvelleZ = limiteCotiere;
+    }
+    this.mares.forEach((m) => {
+      const dx = nouvelleX - m.x, dz = nouvelleZ - m.z;
+      const d = Math.hypot(dx, dz) || 0.001;
+      const bordUtile = m.rayon - 0.3;
+      if (d < bordUtile) {
+        nouvelleX = m.x + (dx / d) * bordUtile;
+        nouvelleZ = m.z + (dz / d) * bordUtile;
+      }
+    });
+
     this.groupe.position.x = nouvelleX;
     this.groupe.position.z = nouvelleZ;
     this.groupe.position.y = this.obtenirHauteurSol(nouvelleX, nouvelleZ);
@@ -2963,6 +3402,42 @@ class GestionPopulation {
    pour la sculpture de l'aire de rassemblement, et à petite échelle comme
    objet tenu en main par le joueur quand il souffle dedans (voir main()).
    ========================================================================== */
+// Canne à pêche tenue en main pendant l'action de pêche (module 13) : manche
+// court + longue tige fine, légèrement courbée vers l'avant, avec un fil
+// tendu jusqu'à l'eau — silhouette simple mais reconnaissable.
+function construireCanneAPeche() {
+  const groupe = new THREE.Group();
+  const materiauManche = new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.8 });
+  const materiauTige = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.6 });
+  const materiauFil = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+
+  const manche = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.22, 6), materiauManche);
+  manche.rotation.z = Math.PI / 2;
+  groupe.add(manche);
+
+  const nbSegments = 5;
+  let x = 0.1;
+  for (let i = 0; i < nbSegments; i++) {
+    const t = i / nbSegments;
+    const longueur = 0.3;
+    const segment = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.014 * (1 - t * 0.6), 0.014 * (1 - (t + 1 / nbSegments) * 0.6), longueur, 5),
+      materiauTige
+    );
+    segment.position.set(x + longueur / 2, t * 0.12, 0);
+    segment.rotation.z = Math.PI / 2 - t * 0.3;
+    groupe.add(segment);
+    x += longueur * Math.cos(t * 0.3);
+  }
+
+  const fil = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.9, 4), materiauFil);
+  fil.position.set(x + 0.1, -0.35, 0);
+  fil.rotation.z = 0.15;
+  groupe.add(fil);
+
+  return groupe;
+}
+
 function construireConque(echelle = 1) {
   // Deux teintes bien contrastées : beige/sable à l'extérieur, rosé-saumon
   // à l'intérieur de l'ouverture — c'est ce contraste qui rend une conque
@@ -3216,6 +3691,7 @@ class GestionSauvegarde {
         engrais: joueur.engrais,
         inventaire: { ...joueur.inventaire },
         aUneArme: joueur.aUneArme,
+        aCannePeche: joueur.aCannePeche,
       },
       personnage: {
         x: personnage.position.x,
@@ -3269,6 +3745,7 @@ class GestionSauvegarde {
       joueur.argent = sauvegarde.joueur.argent ?? joueur.argent;
       joueur.engrais = sauvegarde.joueur.engrais ?? joueur.engrais;
       joueur.aUneArme = sauvegarde.joueur.aUneArme ?? joueur.aUneArme;
+      joueur.aCannePeche = sauvegarde.joueur.aCannePeche ?? joueur.aCannePeche;
       if (sauvegarde.joueur.inventaire) Object.assign(joueur.inventaire, sauvegarde.joueur.inventaire);
     }
 
@@ -3536,11 +4013,16 @@ function construireCheval() {
 }
 
 class GestionChevaux {
-  constructor(scene, obtenirHauteurSol) {
+  constructor(scene, obtenirHauteurSol, mares = []) {
     this.scene = scene;
     this.obtenirHauteurSol = obtenirHauteurSol;
+    this.mares = mares; // jamais d'animal dans l'eau (mares/sea déjà hors zone de spawn)
     this.animaux = [];
     this._peupler();
+  }
+
+  _dansUneMare(x, z) {
+    return this.mares.some((m) => Math.hypot(x - m.x, z - m.z) < m.rayon + 1);
   }
 
   _peupler() {
@@ -3555,7 +4037,7 @@ class GestionChevaux {
         const dz = Math.abs(z - zone.centre.z);
         return dx < zone.taille.largeur * 0.7 && dz < zone.taille.profondeur * 0.7;
       });
-      if (dansUneZone) continue;
+      if (dansUneZone || this._dansUneMare(x, z)) continue;
 
       const h = this.obtenirHauteurSol(x, z);
       const groupe = construireCheval();
@@ -3571,11 +4053,15 @@ class GestionChevaux {
     this.animaux.forEach((a) => {
       if (a.pause > 0) { a.pause -= dt; return; }
       if (!a.cible) {
-        const angle = Math.random() * Math.PI * 2;
-        const rayon = 5 + Math.random() * 10;
-        const x = a.groupe.position.x + Math.cos(angle) * rayon;
-        const z = a.groupe.position.z + Math.sin(angle) * rayon;
-        a.cible = new THREE.Vector3(x, this.obtenirHauteurSol(x, z), z);
+        for (let essai = 0; essai < 5 && !a.cible; essai++) {
+          const angle = Math.random() * Math.PI * 2;
+          const rayon = 5 + Math.random() * 10;
+          const x = a.groupe.position.x + Math.cos(angle) * rayon;
+          const z = a.groupe.position.z + Math.sin(angle) * rayon;
+          if (this._dansUneMare(x, z)) continue; // ne jamais se diriger vers l'eau
+          a.cible = new THREE.Vector3(x, this.obtenirHauteurSol(x, z), z);
+        }
+        if (!a.cible) { a.pause = 1; return; }
       }
       const direction = a.cible.clone().sub(a.groupe.position);
       direction.y = 0;
@@ -3591,6 +4077,280 @@ class GestionChevaux {
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       a.groupe.rotation.y += delta * Math.min(1, dt * 4);
     });
+  }
+}
+
+
+/* ==========================================================================
+   9quater. GIBIER RÉGLEMENTÉ — cerf / notou / roussette (module 12)
+   ==========================================================================
+   Trois silhouettes low-poly originales. Le cerf est régulé toute l'année
+   (espèce invasive) ; le notou et la roussette sont des espèces protégées,
+   visibles toute l'année mais légalement chassables uniquement pendant la
+   "saison" (voir `estSaisonGibierReglemente` dans `main()`, et la note dans
+   `MondeData.gibier`). Hors saison, l'interaction de chasse est simplement
+   indisponible pour ces deux espèces — aucune mise en scène répressive.
+   ========================================================================== */
+
+function construireCerf() {
+  const groupe = new THREE.Group();
+  const materiauRobe = new THREE.MeshStandardMaterial({ color: 0x8a6a42, roughness: 0.85 });
+  const materiauClair = new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.7 });
+  const materiauBois = new THREE.MeshStandardMaterial({ color: 0x5a4530, roughness: 0.9 });
+
+  const corps = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.6, 4, 8), materiauRobe);
+  corps.rotation.z = Math.PI / 2;
+  corps.position.y = 0.68;
+  corps.castShadow = true;
+  groupe.add(corps);
+
+  const ventre = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), materiauClair);
+  ventre.scale.set(1, 0.6, 0.85);
+  ventre.position.set(0, 0.5, 0);
+  groupe.add(ventre);
+
+  const encolure = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.17, 0.42, 8), materiauRobe);
+  encolure.position.set(0.4, 0.92, 0);
+  encolure.rotation.z = -0.7;
+  groupe.add(encolure);
+
+  const tete = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.16), materiauRobe);
+  tete.position.set(0.62, 1.2, 0);
+  groupe.add(tete);
+
+  const museau = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.12), materiauClair);
+  museau.position.set(0.74, 1.13, 0);
+  groupe.add(museau);
+
+  // Bois ramifiés, stylisés (originaux), signature visuelle du cerf.
+  [-0.07, 0.07].forEach((dz) => {
+    const tige = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 0.3, 5), materiauBois);
+    tige.position.set(0.56, 1.44, dz);
+    tige.rotation.z = -0.3;
+    tige.rotation.x = dz > 0 ? 0.25 : -0.25;
+    groupe.add(tige);
+    [0.1, -0.08].forEach((decalage, i) => {
+      const branche = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.14, 5), materiauBois);
+      branche.position.set(0.56 + decalage * 0.5, 1.56 + i * 0.07, dz * 1.4);
+      branche.rotation.z = -0.9;
+      groupe.add(branche);
+    });
+  });
+
+  const queue = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 6), materiauClair);
+  queue.position.set(-0.52, 0.6, 0);
+  queue.rotation.z = Math.PI + 0.4;
+  groupe.add(queue);
+
+  [[-0.24, -0.13], [-0.24, 0.13], [0.24, -0.13], [0.24, 0.13]].forEach(([dx, dz]) => {
+    const patte = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.66, 6), materiauRobe);
+    patte.position.set(dx, 0.33, dz);
+    patte.castShadow = true;
+    groupe.add(patte);
+  });
+
+  return groupe;
+}
+
+function construireNotou() {
+  // Gros pigeon forestier endémique : silhouette ronde, gris-vert, bec court.
+  const groupe = new THREE.Group();
+  const materiauCorps = new THREE.MeshStandardMaterial({ color: 0x5f6b52, roughness: 0.85 });
+  const materiauVentre = new THREE.MeshStandardMaterial({ color: 0x8a7a5c, roughness: 0.8 });
+  const materiauBec = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.7 });
+
+  const corps = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), materiauCorps);
+  corps.scale.set(1, 1.1, 1.3);
+  corps.position.y = 0.3;
+  corps.castShadow = true;
+  groupe.add(corps);
+
+  const ventre = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), materiauVentre);
+  ventre.position.set(0, 0.22, 0.08);
+  groupe.add(ventre);
+
+  const tete = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), materiauCorps);
+  tete.position.set(0, 0.46, 0.26);
+  groupe.add(tete);
+
+  const bec = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.09, 6), materiauBec);
+  bec.rotation.x = Math.PI / 2;
+  bec.position.set(0, 0.44, 0.4);
+  groupe.add(bec);
+
+  [[-0.14, 0], [0.14, 0]].forEach(([dx]) => {
+    const aile = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), materiauCorps);
+    aile.scale.set(0.4, 1, 1.1);
+    aile.position.set(dx, 0.3, 0);
+    groupe.add(aile);
+  });
+
+  [[-0.05, 0], [0.05, 0]].forEach(([dx]) => {
+    const patte = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.18, 5), materiauBec);
+    patte.position.set(dx, 0.1, 0.05);
+    groupe.add(patte);
+  });
+
+  return groupe;
+}
+
+function construireRoussette() {
+  // Chauve-souris frugivore : corps brun compact, grandes ailes membraneuses.
+  // Simplification assumée : représentée au sol/posée plutôt qu'en vol, pour
+  // rester cohérente avec le même système de déplacement que les autres
+  // animaux (voir note dans le README).
+  const groupe = new THREE.Group();
+  const materiauCorps = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.9 });
+  const materiauAile = new THREE.MeshStandardMaterial({
+    color: 0x1c1410, roughness: 0.7, side: THREE.DoubleSide, transparent: true, opacity: 0.92,
+  });
+
+  const corps = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), materiauCorps);
+  corps.position.y = 0.22;
+  corps.castShadow = true;
+  groupe.add(corps);
+
+  const tete = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), materiauCorps);
+  tete.position.set(0.18, 0.26, 0);
+  groupe.add(tete);
+
+  [-0.06, 0.06].forEach((dz) => {
+    const oreille = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.08, 5), materiauCorps);
+    oreille.position.set(0.14, 0.36, dz);
+    groupe.add(oreille);
+  });
+
+  // Ailes : formes triangulaires aplaties, dépliées de chaque côté.
+  [-1, 1].forEach((sens) => {
+    const forme = new THREE.Shape();
+    forme.moveTo(0, 0);
+    forme.lineTo(sens * 0.55, 0.15);
+    forme.lineTo(sens * 0.6, -0.05);
+    forme.lineTo(sens * 0.35, -0.3);
+    forme.lineTo(0, -0.1);
+    forme.closePath();
+    const aile = new THREE.Mesh(new THREE.ShapeGeometry(forme), materiauAile);
+    aile.position.set(0, 0.26, sens * 0.1);
+    aile.rotation.x = -Math.PI / 2.4;
+    groupe.add(aile);
+  });
+
+  return groupe;
+}
+
+class GestionGibierReglemente {
+  constructor(scene, obtenirHauteurSol, mares = []) {
+    this.scene = scene;
+    this.obtenirHauteurSol = obtenirHauteurSol;
+    this.mares = mares; // jamais d'animal dans l'eau
+    this.animaux = []; // { groupe, especeId, cible, pause }
+    this._peuplerPermanents();
+    this.roussettesActives = false;
+  }
+
+  _dansUneMare(x, z) {
+    return this.mares.some((m) => Math.hypot(x - m.x, z - m.z) < m.rayon + 1);
+  }
+
+  _positionLibre() {
+    let tentatives = 0;
+    while (tentatives < 40) {
+      tentatives++;
+      const x = THREE.MathUtils.randFloatSpread(360);
+      const z = THREE.MathUtils.randFloatSpread(380);
+      const dansUneZone = MondeData.zones.some((zone) => {
+        const dx = Math.abs(x - zone.centre.x);
+        const dz = Math.abs(z - zone.centre.z);
+        return dx < zone.taille.largeur * 0.75 && dz < zone.taille.profondeur * 0.75;
+      });
+      if (!dansUneZone && z < 120 && !this._dansUneMare(x, z)) return { x, z };
+    }
+    return { x: 0, z: 0 };
+  }
+
+  _peuplerPermanents() {
+    for (let i = 0; i < 5; i++) {
+      const { x, z } = this._positionLibre();
+      const groupe = construireCerf();
+      groupe.position.set(x, this.obtenirHauteurSol(x, z), z);
+      groupe.rotation.y = Math.random() * Math.PI * 2;
+      this.scene.add(groupe);
+      this.animaux.push({ groupe, especeId: "cerf", cible: null, pause: Math.random() * 4 });
+    }
+    for (let i = 0; i < 6; i++) {
+      const { x, z } = this._positionLibre();
+      const groupe = construireNotou();
+      groupe.position.set(x, this.obtenirHauteurSol(x, z), z);
+      groupe.rotation.y = Math.random() * Math.PI * 2;
+      this.scene.add(groupe);
+      this.animaux.push({ groupe, especeId: "notou", cible: null, pause: Math.random() * 4 });
+    }
+  }
+
+  _peuplerRoussettes() {
+    for (let i = 0; i < 5; i++) {
+      const { x, z } = this._positionLibre();
+      const groupe = construireRoussette();
+      groupe.position.set(x, this.obtenirHauteurSol(x, z), z);
+      groupe.rotation.y = Math.random() * Math.PI * 2;
+      this.scene.add(groupe);
+      this.animaux.push({ groupe, especeId: "roussette", cible: null, pause: Math.random() * 2 });
+    }
+  }
+
+  _disperserRoussettes() {
+    this.animaux = this.animaux.filter((a) => {
+      if (a.especeId !== "roussette") return true;
+      this.scene.remove(a.groupe);
+      return false;
+    });
+  }
+
+  update(dt, estNuit) {
+    if (estNuit && !this.roussettesActives) { this.roussettesActives = true; this._peuplerRoussettes(); }
+    if (!estNuit && this.roussettesActives) { this.roussettesActives = false; this._disperserRoussettes(); }
+
+    this.animaux.forEach((a) => {
+      if (a.pause > 0) { a.pause -= dt; return; }
+      if (!a.cible) {
+        for (let essai = 0; essai < 5 && !a.cible; essai++) {
+          const angle = Math.random() * Math.PI * 2;
+          const rayon = 4 + Math.random() * 8;
+          const x = a.groupe.position.x + Math.cos(angle) * rayon;
+          const z = a.groupe.position.z + Math.sin(angle) * rayon;
+          if (this._dansUneMare(x, z) || z > 120) continue; // ne jamais se diriger vers l'eau
+          a.cible = new THREE.Vector3(x, this.obtenirHauteurSol(x, z), z);
+        }
+        if (!a.cible) { a.pause = 1; return; }
+      }
+      const direction = a.cible.clone().sub(a.groupe.position);
+      direction.y = 0;
+      const distance = direction.length();
+      if (distance < 0.4) { a.cible = null; a.pause = 2 + Math.random() * 4; return; }
+      direction.normalize();
+      const vitesse = a.especeId === "cerf" ? 2.6 : 1.6;
+      a.groupe.position.x += direction.x * vitesse * dt;
+      a.groupe.position.z += direction.z * vitesse * dt;
+      a.groupe.position.y = this.obtenirHauteurSol(a.groupe.position.x, a.groupe.position.z);
+      const angleCible = Math.atan2(direction.x, direction.z);
+      let delta = angleCible - a.groupe.rotation.y;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      a.groupe.rotation.y += delta * Math.min(1, dt * 5);
+    });
+  }
+
+  leplusProche(position, rayon = 4) {
+    let meilleur = null, meilleureDistance = rayon;
+    this.animaux.forEach((a) => {
+      const d = a.groupe.position.distanceTo(position);
+      if (d <= meilleureDistance) { meilleur = a; meilleureDistance = d; }
+    });
+    return meilleur;
+  }
+
+  chasser(animal) {
+    this.scene.remove(animal.groupe);
+    this.animaux = this.animaux.filter((a) => a !== animal);
   }
 }
 
@@ -3710,20 +4470,31 @@ class GestionMultijoueur {
 function main() {
   const sceneManager = new SceneManager(document.body);
   const terrain = new TerrainBuilder(sceneManager.scene);
-  const personnage = new Personnage(sceneManager.scene, terrain.obtenirHauteurSol);
+  const personnage = new Personnage(sceneManager.scene, terrain.obtenirHauteurSol, terrain.mares);
 
   // Instanciation des foyers (module 2) à partir du décor généré.
   const foyers = terrain.foyers.map((f) => new Foyer(f));
 
   // --- État du joueur et gestion des cultures (module 3) ------------------
-  const joueur = { argent: 50, engrais: 1, inventaire: {}, aUneArme: false };
+  const joueur = { argent: 50, engrais: 1, inventaire: {}, aUneArme: false, aCannePeche: false };
+  let minuteurPeche = 0;
+  let pecheEnCours = false;
   const cultures = new GestionCultures(terrain.parcelles, joueur);
   const population = new GestionPopulation(terrain, joueur);
   const conflits = new GestionConflits(terrain, population);
   const effets = new EffetsSonores();
   const faune = new GestionFaune(sceneManager.scene, terrain.obtenirHauteurSol, population.tribus);
-  const chevaux = new GestionChevaux(sceneManager.scene, terrain.obtenirHauteurSol);
+  const chevaux = new GestionChevaux(sceneManager.scene, terrain.obtenirHauteurSol, terrain.mares);
+  const gibier = new GestionGibierReglemente(sceneManager.scene, terrain.obtenirHauteurSol, terrain.mares);
   const multijoueur = new GestionMultijoueur(sceneManager.scene);
+
+  // Fenêtre de "saison d'avril" stylisée (notou/roussette) : revient
+  // périodiquement dans le calendrier accéléré du jeu — voir la note dans
+  // `MondeData.gibier`. 1 jour de jeu ouvert sur 10, pour rester une
+  // vraie contrainte sans rendre la chasse à ces espèces trop rare.
+  function estSaisonGibierReglemente() {
+    return Math.floor(sceneManager.jourJeu) % 10 === 0;
+  }
 
   // Caméra suiveuse orbitale : OrbitControls recentré chaque frame sur le
   // personnage, ce qui permet à la fois le suivi automatique et le contrôle
@@ -3793,11 +4564,13 @@ function main() {
     if (sceneManager.estNuit) {
       for (const foyer of foyers) {
         if (foyer.position.distanceTo(pos) <= foyer.rayonInteraction) {
-          if (foyer.estAllume && (joueur.inventaire.viande_sanglier || 0) > 0) {
+          const viandeCrueId = ["viande_sanglier", "viande_cerf", "viande_notou", "viande_roussette"]
+            .find((id) => (joueur.inventaire[id] || 0) > 0);
+          if (foyer.estAllume && viandeCrueId) {
             cibleCourante = {
-              libelle: "E : faire griller la viande de sanglier",
+              libelle: `E : faire griller la viande (${MondeData.iconesObjets[viandeCrueId]})`,
               action: () => {
-                joueur.inventaire.viande_sanglier -= 1;
+                joueur.inventaire[viandeCrueId] -= 1;
                 joueur.inventaire.viande_grillee = (joueur.inventaire.viande_grillee || 0) + 1;
                 afficherMessage("Viande grillée 🍖 — prête à nourrir la tribu");
                 effets.jouerSucces();
@@ -3844,6 +4617,75 @@ function main() {
       }
     }
 
+    // Gibier réglementé le plus proche (module 12) : cerf (régulé toute
+    // l'année), notou et roussette (protégés, chassables seulement en
+    // "saison" — voir `estSaisonGibierReglemente`).
+    if (!cibleCourante) {
+      const animal = gibier.leplusProche(pos);
+      if (animal) {
+        const espece = MondeData.gibier.find((g) => g.id === animal.especeId);
+        const horsSaison = espece.reglemente && !estSaisonGibierReglemente();
+        if (!joueur.aUneArme) {
+          cibleCourante = {
+            libelle: `⚠️ Un ${espece.nom} est à proximité — une arme de chasse serait utile`,
+            action: () => {},
+          };
+        } else if (horsSaison) {
+          cibleCourante = {
+            libelle: `🚫 ${espece.nom} protégé(e) hors saison — chasse interdite (ouverte seulement quelques jours par cycle)`,
+            action: () => {},
+          };
+        } else {
+          cibleCourante = {
+            libelle: `E : chasser le ${espece.nom} (fusil de chasse)`,
+            action: () => {
+              gibier.chasser(animal);
+              joueur.inventaire[espece.viandeId] = (joueur.inventaire[espece.viandeId] || 0) + 1;
+              afficherMessage(`${espece.nom[0].toUpperCase()}${espece.nom.slice(1)} chassé : ${MondeData.iconesObjets[espece.viandeId]} (à faire griller sur un foyer)`);
+              effets.jouerRecolte();
+              mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
+            },
+          };
+        }
+      }
+    }
+
+    // Ponton de pêche le plus proche (module 13).
+    if (!cibleCourante) {
+      const lieu = terrain.lieuxPeche.find((l) => l.position.distanceTo(pos) <= 4);
+      if (lieu) {
+        if (!joueur.aCannePeche) {
+          cibleCourante = { libelle: "⚠️ Une canne à pêche serait utile ici (épicerie du village)", action: () => {} };
+        } else if (minuteurPeche > 0 || pecheEnCours) {
+          cibleCourante = { libelle: pecheEnCours ? "Pêche en cours…" : `Pêche : patientez (${minuteurPeche.toFixed(1)}s)`, action: () => {} };
+        } else {
+          cibleCourante = {
+            libelle: `E : pêcher${lieu.mer ? " en mer" : " dans la mare"}`,
+            action: () => {
+              minuteurPeche = MondeData.peche.dureeAttente;
+              pecheEnCours = true;
+              const canne = construireCanneAPeche();
+              canne.position.set(0.22, 1.25, 0.25);
+              canne.rotation.y = -0.3;
+              personnage.groupe.add(canne);
+              setTimeout(() => {
+                personnage.groupe.remove(canne);
+                pecheEnCours = false;
+                const [min, max] = lieu.mer ? MondeData.peche.gainMer : MondeData.peche.gainMare;
+                const gain = Math.floor(min + Math.random() * (max - min + 1));
+                joueur.argent += gain;
+                afficherMessage(`🐟 Pêché ! +${gain} pièces`);
+                effets.jouerPiece();
+                mettreAJourHudEconomie();
+                sauvegarde.sauvegarder();
+              }, 900);
+            },
+          };
+        }
+      }
+    }
+
     // Parcelle de plantation la plus proche (planter / récolter / engrais).
     if (!cibleCourante) {
       for (const p of terrain.parcelles) {
@@ -3883,13 +4725,35 @@ function main() {
           cibleCourante = {
             libelle: `E : vendre la récolte à ${c.data.nom}`,
             action: () => {
+              const quetePeutEtreHonoree = quete.cultureId && !quete.primeVersee
+                && (joueur.inventaire[quete.cultureId] || 0) > 0 && c.data.achete.includes(quete.cultureId);
               const { total, nbVendu } = cultures.vendreRecolte(c);
               if (nbVendu > 0) { population.ajouterRevenuCommunautaire(total); statsSemaine.argentGagne += total; }
-              afficherMessage(nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment");
+              let messageVente = nbVendu > 0 ? `Vendu ${nbVendu} récolte(s) pour ${total} pièces` : "Rien à vendre pour le moment";
+              if (quetePeutEtreHonoree) {
+                quete.primeVersee = true;
+                joueur.argent += quete.prime;
+                messageVente += ` · Demande du village honorée : +${quete.prime} pièces de prime !`;
+              }
+              afficherMessage(messageVente);
               (nbVendu > 0 ? effets.jouerPiece() : effets.jouerErreur());
               mettreAJourHudEconomie();
               sauvegarde.sauvegarder();
               if (nbVendu > 0) multijoueur.diffuserEvenement("vente", { total });
+            },
+          };
+        } else if (c.data.vend?.includes("canne_peche") && !joueur.aCannePeche) {
+          const prix = MondeData.peche.canneAPeche.prixAchat;
+          cibleCourante = {
+            libelle: `E : acheter une canne à pêche (${prix} pièces) à ${c.data.nom}`,
+            action: () => {
+              if (joueur.argent < prix) { afficherMessage("Pas assez d'argent"); effets.jouerErreur(); return; }
+              joueur.argent -= prix;
+              joueur.aCannePeche = true;
+              afficherMessage("Canne à pêche achetée — utilisable depuis un ponton");
+              effets.jouerSucces();
+              mettreAJourHudEconomie();
+              sauvegarde.sauvegarder();
             },
           };
         } else if (c.data.vend?.includes("engrais")) {
@@ -4181,6 +5045,11 @@ function main() {
   // --- Statistiques de la semaine, remises à zéro à chaque conque sonnée --
   // (module : bilans annoncés par la conque).
   const statsSemaine = { argentGagne: 0, conflitsResolus: 0 };
+  // Petit objectif récurrent (module 14 — "scénarios") : le village demande
+  // une culture précise à chaque conque ; la vendre avant la prochaine
+  // conque rapporte une prime. Simple boucle de progression, sans niveaux
+  // complexes, qui donne une raison concrète de replanter chaque semaine.
+  const quete = { cultureId: null, primeVersee: false, prime: 40 };
 
   // --- Séquence "souffler dans la conque" ---------------------------------
   // Mouvement du joueur bloqué le temps de la prise en main réelle (de la
@@ -4210,12 +5079,21 @@ function main() {
     rassemblementMinuteur = 9; // secondes
 
     // Bilan annoncé : ventes/différends réglés depuis la dernière conque,
-    // et une "prochaine demande" (flaveur, tirée du catalogue de cultures).
-    const demande = MondeData.cultures[Math.floor(Math.random() * MondeData.cultures.length)];
-    const bilan = statsSemaine.argentGagne > 0 || statsSemaine.conflitsResolus > 0
+    // et le résultat de la demande précédente (module 14).
+    let bilan = statsSemaine.argentGagne > 0 || statsSemaine.conflitsResolus > 0
       ? `Bilan : ${statsSemaine.argentGagne} pièces de récoltes vendues, ${statsSemaine.conflitsResolus} différend(s) réglé(s). `
       : "Bilan : une semaine calme. ";
-    hudZoneFlottant.textContent = bilan + `Le village recherche : ${demande.icone} ${demande.nom}.`;
+    if (quete.cultureId) {
+      const cultureDemandee = MondeData.cultures.find((c) => c.id === quete.cultureId);
+      bilan += quete.primeVersee
+        ? `Demande honorée (${cultureDemandee.icone} ${cultureDemandee.nom}) : prime de ${quete.prime} pièces versée ! `
+        : `Demande non honorée (${cultureDemandee.icone} ${cultureDemandee.nom}) — ce sera pour une prochaine fois. `;
+    }
+
+    const demande = MondeData.cultures[Math.floor(Math.random() * MondeData.cultures.length)];
+    quete.cultureId = demande.id;
+    quete.primeVersee = false;
+    hudZoneFlottant.textContent = bilan + `Le village recherche : ${demande.icone} ${demande.nom} (prime de ${quete.prime} pièces si livrée avant la prochaine conque).`;
     hudZoneFlottant.classList.add("visible");
 
     statsSemaine.argentGagne = 0;
@@ -4524,7 +5402,19 @@ function main() {
     population.update(dt);
     conflits.update(dt, sceneManager.scene);
     faune.update(dt, sceneManager.estNuit);
+    gibier.update(dt, sceneManager.estNuit);
     chevaux.update(dt);
+    if (minuteurPeche > 0) minuteurPeche -= dt;
+
+    // Torches automatiques (module 16) : s'allument/s'éteignent seules avec
+    // le cycle jour/nuit, avec un léger scintillement comme les foyers.
+    terrain.torches.forEach((t) => {
+      t.age += dt;
+      const cible = sceneManager.estNuit ? 1 : 0;
+      t.flamme.material.opacity = THREE.MathUtils.lerp(t.flamme.material.opacity, cible, Math.min(1, dt * 3));
+      const scintillement = 1 + Math.sin(t.age * 11) * 0.08 + Math.sin(t.age * 19) * 0.05;
+      t.lumiere.intensity = THREE.MathUtils.lerp(t.lumiere.intensity, cible * 1.3, Math.min(1, dt * 3)) * scintillement;
+    });
     multijoueur.update(dt);
     minuteurDiffusionMulti -= dt;
     if (minuteurDiffusionMulti <= 0 && multijoueur.connecte) {

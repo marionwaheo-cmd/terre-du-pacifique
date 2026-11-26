@@ -144,11 +144,56 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   simulés localement par chaque client pour l'instant.
 
 **Module 11 — décor enrichi**
-- Végétation bien plus dense (arbres, bananiers et buissons bas), pour un
-  paysage moins vide.
+- Végétation très dense (arbres, bananiers, cocotiers, fougères arborescentes,
+  buissons, arbres fruitiers, framboisiers et pieds d'hibiscus fleuris en
+  couleurs), pour un paysage quasiment sans terrain vide — seuls les chemins
+  restent dégagés.
 - Petites mares d'eau douce près de chaque tribu, avec une berge herbeuse.
 - Une quinzaine de chevaux en liberté, dispersés sur toute la carte, qui
   errent paisiblement de jour comme de nuit (décoratif, non chassable).
+- Des torches s'allument et s'éteignent automatiquement autour des
+  habitations avec le cycle jour/nuit, sans action du joueur.
+
+**Module 12 — chasse saisonnière réglementée**
+- Basé sur une recherche réelle de la réglementation néo-calédonienne (voir
+  sources ci-dessous) : le **cerf rusa** est une espèce régulée, chassable
+  toute l'année ; le **notou** et la **roussette** sont des espèces
+  **protégées**, légalement chassables seulement durant de courtes périodes
+  (les week-ends d'avril, selon les provinces).
+- Dans le jeu, cette « saison » revient périodiquement dans le calendrier
+  accéléré : hors saison, l'interaction de chasse est simplement
+  indisponible pour le notou et la roussette (aucune mise en scène
+  répressive). Le cerf, lui, reste chassable en tout temps.
+- ⚠️ Les dates exactes varient selon les provinces et les années — ce qui
+  est implémenté est une approximation stylisée à but ludique, pas un
+  conseil juridique. Sources consultées : [guide de chasse, Province Sud](https://www.province-sud.nc/sites/default/files/guidechasse-psud-2022_web.pdf),
+  [communiqué chasse roussettes/notous, Province Nord](https://province-nord.nc/sites/default/files/communique-ouverte-chasse-roussettes-inter-province-nouvelle-caledonie-2025.pdf),
+  [Les Nouvelles Calédoniennes](https://www.lnc.nc/article/roussettes-et-notous-la-chasse-est-ouverte-jusqu-au-26-avril).
+
+**Module 13 — pêche et quai**
+- Une canne à pêche s'achète à l'épicerie du village.
+- De petits pontons de pêche sont installés au bord de chaque mare, et un
+  quai en mer (avec un bateau décoratif amarré, immatriculé « NC ») permet de
+  pêcher en mer pour de meilleures prises.
+- La canne apparaît en main pendant la courte animation de pêche.
+- Le bateau n'est pour l'instant pas pilotable : premier pas visuel avant un
+  futur module de navigation.
+
+**Module 14 — petites quêtes ("scénarios")**
+- À chaque appel de la conque, le village demande une culture précise ; la
+  vendre avant le prochain appel rapporte une prime en pièces, annoncée dans
+  le bilan suivant.
+
+**Module 15/16 — sécurité du monde (eau)**
+- Ni les animaux (chevaux, sangliers, cerfs, notous, roussettes) ni les
+  arbres ne peuvent plus apparaître dans une mare ou en mer : l'eau reste de
+  l'eau. Le joueur peut s'approcher du bord (et se tenir sur un ponton de
+  pêche) mais ne peut plus marcher dans l'eau elle-même.
+
+## 📱 Mobile
+Le jeu reste jouable au doigt (joystick virtuel + bouton E, module 8) ; la
+barre de boutons du haut (Multi/Musique/Tenue/réinitialiser) est désormais
+en disposition flexible et se réduit sur petit écran pour ne jamais déborder.
 
 ## 🔧 Améliorations récentes
 
