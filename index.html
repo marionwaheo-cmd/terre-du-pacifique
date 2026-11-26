@@ -895,15 +895,16 @@ const MondeData = {
   // --- CULTURES DISPONIBLES (module 3 — Cultures & Économie) --------------
   // `couleur` sert uniquement à la représentation visuelle générique du
   // fruit/tubercule à maturité (forme procédurale, jamais une texture ou
-  // un modèle réaliste copié). `dureeCroissanceJours` est exprimée en
-  // "jours de jeu" (voir `SceneManager.jourJeu`).
+  // un modèle réaliste copié). `dureeCroissanceMinutes` est exprimée en
+  // MINUTES RÉELLES (pas en jours de jeu accélérés) : une pousse doit
+  // rester rapide à observer pour ne pas être ennuyeuse à jouer.
   cultures: [
-    { id: "igname",   nom: "Igname",   icone: "🍠", dureeCroissanceJours: 7, prixVenteBase: 12, couleur: 0xd9b36c, zonesCompatibles: ["plantation"] },
-    { id: "pasteque", nom: "Pastèque", icone: "🍉", dureeCroissanceJours: 5, prixVenteBase: 9,  couleur: 0x3a8f3a, zonesCompatibles: ["plantation"] },
-    { id: "tomate",   nom: "Tomate",   icone: "🍅", dureeCroissanceJours: 3, prixVenteBase: 6,  couleur: 0xd13c2c, zonesCompatibles: ["plantation"] },
-    { id: "taro",     nom: "Taro",     icone: "🌱", dureeCroissanceJours: 6, prixVenteBase: 10, couleur: 0x6b4a2b, zonesCompatibles: ["plantation"] },
-    { id: "manioc",   nom: "Manioc",   icone: "🌿", dureeCroissanceJours: 8, prixVenteBase: 8,  couleur: 0xc9a86a, zonesCompatibles: ["plantation"] },
-    { id: "cafe",     nom: "Café",     icone: "☕", dureeCroissanceJours: 14,prixVenteBase: 20, couleur: 0x4a2f1a, zonesCompatibles: ["plantation"] },
+    { id: "igname",   nom: "Igname",   icone: "🍠", dureeCroissanceMinutes: 4,  prixVenteBase: 12, couleur: 0xd9b36c, zonesCompatibles: ["plantation"] },
+    { id: "pasteque", nom: "Pastèque", icone: "🍉", dureeCroissanceMinutes: 3,  prixVenteBase: 9,  couleur: 0x3a8f3a, zonesCompatibles: ["plantation"] },
+    { id: "tomate",   nom: "Tomate",   icone: "🍅", dureeCroissanceMinutes: 1.5,prixVenteBase: 6,  couleur: 0xd13c2c, zonesCompatibles: ["plantation"] },
+    { id: "taro",     nom: "Taro",     icone: "🌱", dureeCroissanceMinutes: 3.5,prixVenteBase: 10, couleur: 0x6b4a2b, zonesCompatibles: ["plantation"] },
+    { id: "manioc",   nom: "Manioc",   icone: "🌿", dureeCroissanceMinutes: 5,  prixVenteBase: 8,  couleur: 0xc9a86a, zonesCompatibles: ["plantation"] },
+    { id: "cafe",     nom: "Café",     icone: "☕", dureeCroissanceMinutes: 7,  prixVenteBase: 20, couleur: 0x4a2f1a, zonesCompatibles: ["plantation"] },
   ],
 
   // Engrais : accélère la croissance de la culture en place (réduit le
@@ -1084,6 +1085,11 @@ class SceneManager {
   // Fait avancer l'horloge de jeu et met à jour ciel/lumière/étoiles en
   // conséquence. Appelé chaque frame depuis la boucle principale.
   mettreAJourCycleJourNuit(dt) {
+    // Temps réel écoulé (secondes), indépendant de l'accélération jour/nuit :
+    // sert de base à la croissance des cultures (module 3), pour qu'elle se
+    // compte en MINUTES RÉELLES et non en jours de jeu accélérés.
+    this.tempsReelEcoule = (this.tempsReelEcoule || 0) + dt;
+
     const heureAvant = this.tempsJeu;
     this.tempsJeu = (this.tempsJeu + (dt / this.dureeJourSecondes) * 24) % 24;
     if (this.tempsJeu < heureAvant) this.jourJeu += 1; // un cycle de 24h s'est écoulé
@@ -2054,26 +2060,49 @@ class Personnage {
     if (this.materiauPeau) this.materiauPeau.color.setHex(teintes[this.indexPeau]);
   }
 
-  update(dt) {
+  update(dt, camera) {
     const avance = (this.touches["w"] || this.touches["arrowup"]) ? 1 : 0;
     const recule = (this.touches["s"] || this.touches["arrowdown"]) ? 1 : 0;
     const gauche = (this.touches["a"] || this.touches["arrowleft"]) ? 1 : 0;
     const droite = (this.touches["d"] || this.touches["arrowright"]) ? 1 : 0;
 
-    this._direction.set(droite - gauche, 0, recule - avance);
+    // Entrée EN REPÈRE LOCAL (indépendante de l'orientation de la caméra) :
+    // x = strafe droite(+)/gauche(-), z = avance(+)/recule(-).
+    let entreeLocaleX = droite - gauche;
+    let entreeLocaleZ = avance - recule;
 
     // Joystick virtuel tactile (module 8) : prend le dessus sur le clavier
-    // dès qu'il est actionné. `entreeTactile` est mis à jour ailleurs
-    // (voir `configurerJoystickTactile` dans main()), { x, z } dans [-1, 1].
+    // dès qu'il est actionné. `entreeTactile` ({x, z}, module de touches
+    // haut/bas inversé par rapport au repère local ci-dessus).
     if (this.entreeTactile && (Math.abs(this.entreeTactile.x) > 0.08 || Math.abs(this.entreeTactile.z) > 0.08)) {
-      this._direction.set(this.entreeTactile.x, 0, this.entreeTactile.z);
+      entreeLocaleX = this.entreeTactile.x;
+      entreeLocaleZ = -this.entreeTactile.z;
     }
+
+    // Correction de prise en main : "avancer" déplace le personnage dans la
+    // direction où REGARDE LA CAMÉRA (et non selon les axes fixes du monde),
+    // comme dans la plupart des jeux à caméra orbitale — sans quoi orbiter
+    // la caméra inverse le sens perçu des touches.
+    let avantCamera = new THREE.Vector3();
+    let droiteCamera = new THREE.Vector3();
+    if (camera) {
+      avantCamera.set(this.groupe.position.x - camera.position.x, 0, this.groupe.position.z - camera.position.z);
+      if (avantCamera.lengthSq() < 0.0001) avantCamera.set(0, 0, -1); else avantCamera.normalize();
+      droiteCamera.set(avantCamera.z, 0, -avantCamera.x);
+    } else {
+      avantCamera.set(0, 0, -1);
+      droiteCamera.set(1, 0, 0);
+    }
+
+    this._direction
+      .copy(avantCamera).multiplyScalar(entreeLocaleZ)
+      .addScaledVector(droiteCamera, entreeLocaleX);
 
     const enMouvement = this._direction.lengthSq() > 0.0001;
     if (enMouvement) this._direction.normalize();
 
     const vitesseVoulue = this._direction.clone().multiplyScalar(this.vitesseDeplacement);
-    this._vitesseActuelle.lerp(vitesseVoulue, Math.min(1, dt * 8));
+    this._vitesseActuelle.lerp(vitesseVoulue, Math.min(1, dt * 12));
 
     const deplacement = this._vitesseActuelle.clone().multiplyScalar(dt);
     const limite = 205; // reste dans les limites du sol généré
@@ -2311,13 +2340,17 @@ class GestionCultures {
     this.joueur = joueur;
   }
 
-  // Progression (0 à 1) de la culture d'une parcelle, selon l'horodatage
-  // continu du jeu (`sceneManager.tempsJeuTotal`, en jours).
-  _progression(parcelleEntree, tempsJeuTotal) {
+  // Progression (0 à 1) de la culture d'une parcelle, selon le temps RÉEL
+  // écoulé (`sceneManager.tempsReelEcoule`, en secondes) — volontairement
+  // indépendant du cycle jour/nuit accéléré, pour que planter reste
+  // satisfaisant à l'échelle de quelques minutes de jeu réel.
+  _progression(parcelleEntree, tempsReelEcoule) {
     const c = parcelleEntree.data.cultureActuelle;
     if (!c) return 0;
-    const duree = c.dureeJours * (1 - (c.bonusEngrais || 0));
-    return THREE.MathUtils.clamp((tempsJeuTotal - c.datePlantation) / duree, 0, 1);
+    // `|| 3` protège les sauvegardes antérieures (champ `dureeJours`, autre
+    // échelle de temps) : la culture arrive simplement à maturité vite.
+    const dureeSecondes = (c.dureeMinutes || 3) * 60 * (1 - (c.bonusEngrais || 0));
+    return THREE.MathUtils.clamp((tempsReelEcoule - c.datePlantation) / dureeSecondes, 0, 1);
   }
 
   _stade(progression, aCulture) {
@@ -2329,9 +2362,9 @@ class GestionCultures {
 
   // Reconstruit le visuel d'une parcelle UNIQUEMENT si son stade a changé
   // depuis le dernier appel (évite de regénérer des géométries chaque frame).
-  update(tempsJeuTotal) {
+  update(tempsReelEcoule) {
     this.parcelles.forEach((p) => {
-      const progression = this._progression(p, tempsJeuTotal);
+      const progression = this._progression(p, tempsReelEcoule);
       const stade = this._stade(progression, !!p.data.cultureActuelle);
       if (stade !== p._dernierStade) {
         this._reconstruireVisuel(p, stade);
@@ -2349,46 +2382,64 @@ class GestionCultures {
     }
   }
 
+  // Génère (une seule fois par plantation) des positions de germes réparties
+  // sur TOUTE la surface de la parcelle, pour éviter l'effet "une seule
+  // plante au milieu d'un champ vide" — chaque position est un petit plant
+  // indépendant, comme un vrai semis en ligne.
+  _genererPositionsPousses(p) {
+    const demiTaille = p.data.taille / 2 - 0.5;
+    const nbPousses = 10 + Math.floor(Math.random() * 5);
+    const positions = [];
+    for (let i = 0; i < nbPousses; i++) {
+      positions.push({
+        x: THREE.MathUtils.randFloatSpread(demiTaille * 2),
+        z: THREE.MathUtils.randFloatSpread(demiTaille * 2),
+        decalage: Math.random() * Math.PI * 2, // variété d'orientation par plant
+      });
+    }
+    p._positionsPousses = positions;
+  }
+
   _reconstruireVisuel(p, stade) {
     this._viderGroupe(p.groupePousse);
-    if (stade === STADE_VIDE) return;
+    if (stade === STADE_VIDE) { p._positionsPousses = null; return; }
+    if (!p._positionsPousses) this._genererPositionsPousses(p);
 
     const culture = MondeData.cultures.find((c) => c.id === p.data.cultureActuelle.id);
     const echelle = stade === STADE_POUSSE ? 0.35 : stade === STADE_CROISSANCE ? 0.7 : 1.0;
     const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x4a8a3a, roughness: 0.85 });
+    const materiauFruit = stade === STADE_MATURE
+      ? new THREE.MeshStandardMaterial({ color: culture.couleur, roughness: 0.6 })
+      : null;
 
-    // Touffe de feuilles génériques (3 petits cônes), hauteur proportionnelle
-    // au stade de croissance.
-    for (let i = 0; i < 3; i++) {
-      const angle = (i / 3) * Math.PI * 2;
-      const feuille = new THREE.Mesh(new THREE.ConeGeometry(0.12 * echelle, 0.5 * echelle, 6), materiauFeuille);
-      feuille.position.set(Math.cos(angle) * 0.15, 0.25 * echelle, Math.sin(angle) * 0.15);
-      feuille.castShadow = true;
-      p.groupePousse.add(feuille);
-    }
-
-    // À maturité : fruits/tubercules colorés selon la culture, prêts à être
-    // récoltés (repère visuel clair pour le joueur).
-    if (stade === STADE_MATURE) {
-      const materiauFruit = new THREE.MeshStandardMaterial({ color: culture.couleur, roughness: 0.6 });
-      for (let i = 0; i < 3; i++) {
-        const angle = (i / 3) * Math.PI * 2 + 0.4;
-        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), materiauFruit);
-        fruit.position.set(Math.cos(angle) * 0.22, 0.2, Math.sin(angle) * 0.22);
+    p._positionsPousses.forEach(({ x, z, decalage }) => {
+      // Petite touffe de 2 feuilles par plant (au lieu d'une seule grosse
+      // touffe centrale), hauteur proportionnelle au stade de croissance.
+      for (let i = 0; i < 2; i++) {
+        const angle = decalage + i * Math.PI;
+        const feuille = new THREE.Mesh(new THREE.ConeGeometry(0.06 * echelle, 0.28 * echelle, 6), materiauFeuille);
+        feuille.position.set(x + Math.cos(angle) * 0.06, 0.14 * echelle, z + Math.sin(angle) * 0.06);
+        feuille.castShadow = true;
+        p.groupePousse.add(feuille);
+      }
+      // À maturité : un petit fruit/tubercule par plant, repère visuel clair.
+      if (materiauFruit) {
+        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 7, 5), materiauFruit);
+        fruit.position.set(x, 0.1, z);
         fruit.castShadow = true;
         p.groupePousse.add(fruit);
       }
-    }
+    });
   }
 
   // --- Actions déclenchées par le système d'interaction (touche E) -------
-  planter(parcelleEntree, cultureId, tempsJeuTotal) {
+  planter(parcelleEntree, cultureId, tempsReelEcoule) {
     const culture = MondeData.cultures.find((c) => c.id === cultureId);
     if (!culture || parcelleEntree.data.cultureActuelle) return;
     parcelleEntree.data.cultureActuelle = {
       id: cultureId,
-      dureeJours: culture.dureeCroissanceJours,
-      datePlantation: tempsJeuTotal,
+      dureeMinutes: culture.dureeCroissanceMinutes,
+      datePlantation: tempsReelEcoule,
       bonusEngrais: 0,
     };
   }
@@ -2706,6 +2757,10 @@ class GestionSauvegarde {
       horodatage: Date.now(),
       tempsJeu: sceneManager.tempsJeu,
       jourJeu: sceneManager.jourJeu,
+      // Base de temps RÉELLE (module 3bis) : sans elle, une culture plantée
+      // avant une sauvegarde repartirait de 0% à la reprise (son horodatage
+      // de plantation deviendrait supérieur au compteur réinitialisé).
+      tempsReelEcoule: sceneManager.tempsReelEcoule || 0,
       joueur: {
         argent: joueur.argent,
         engrais: joueur.engrais,
@@ -2758,6 +2813,7 @@ class GestionSauvegarde {
 
     if (typeof sauvegarde.tempsJeu === "number") sceneManager.tempsJeu = sauvegarde.tempsJeu;
     if (typeof sauvegarde.jourJeu === "number") sceneManager.jourJeu = sauvegarde.jourJeu;
+    if (typeof sauvegarde.tempsReelEcoule === "number") sceneManager.tempsReelEcoule = sauvegarde.tempsReelEcoule;
 
     if (sauvegarde.joueur) {
       joueur.argent = sauvegarde.joueur.argent ?? joueur.argent;
@@ -2808,41 +2864,79 @@ class GestionSauvegarde {
    enregistrement dans `this.animaux`) peut être réutilisée telle quelle.
    ========================================================================== */
 
+// Silhouette ronde et sympathique (inspirée d'un style "dessin" rond et
+// coloré : corps brun arrondi, oreilles et crinière sombres, défenses et
+// museau clairs, pattes sombres) — forme et proportions ORIGINALES conçues
+// pour Three.js, jamais une image ou un modèle existant copié.
 function construireSanglier() {
   const groupe = new THREE.Group();
-  const materiauCorps = new THREE.MeshStandardMaterial({ color: 0x4a3a2e, roughness: 0.9 });
+  const materiauCorps = new THREE.MeshStandardMaterial({ color: 0xa8653a, roughness: 0.85 });
+  const materiauSombre = new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.9 });
+  const materiauClair = new THREE.MeshStandardMaterial({ color: 0xf2e8d8, roughness: 0.6 });
 
-  const corps = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.5, 4, 8), materiauCorps);
-  corps.rotation.z = Math.PI / 2;
-  corps.position.y = 0.32;
+  // Corps bien rond (sphère aplatie en longueur) plutôt qu'une capsule
+  // élancée, pour l'allure ronde et accueillante de la référence.
+  const corps = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), materiauCorps);
+  corps.scale.set(1.25, 0.95, 1);
+  corps.position.y = 0.34;
   corps.castShadow = true;
   groupe.add(corps);
 
-  const tete = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.36, 8), materiauCorps);
-  tete.rotation.z = Math.PI / 2;
-  tete.position.set(0.52, 0.3, 0);
+  // Tête ronde avec museau proéminent et clair.
+  const tete = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), materiauCorps);
+  tete.position.set(0.42, 0.4, 0);
   tete.castShadow = true;
   groupe.add(tete);
 
-  const materiauDefense = new THREE.MeshStandardMaterial({ color: 0xf0ead6 });
-  [-0.07, 0.07].forEach((dz) => {
-    const defense = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1, 6), materiauDefense);
-    defense.rotation.z = Math.PI / 2 - 0.5;
-    defense.position.set(0.66, 0.22, dz);
+  const museau = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), materiauClair);
+  museau.scale.set(1.3, 0.9, 1);
+  museau.position.set(0.58, 0.34, 0);
+  groupe.add(museau);
+
+  const nez = new THREE.Mesh(new THREE.CircleGeometry(0.035, 8), new THREE.MeshStandardMaterial({ color: 0x6b4a4a }));
+  nez.position.set(0.665, 0.34, 0);
+  nez.rotation.y = Math.PI / 2;
+  groupe.add(nez);
+
+  // Petites oreilles sombres et rondes sur le dessus de la tête.
+  [-0.1, 0.1].forEach((dz) => {
+    const oreille = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.1, 8), materiauSombre);
+    oreille.position.set(0.38, 0.54, dz);
+    oreille.rotation.z = -0.3;
+    groupe.add(oreille);
+  });
+
+  // Défenses claires, visibles de chaque côté du museau.
+  [-0.08, 0.08].forEach((dz) => {
+    const defense = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.11, 6), materiauClair);
+    defense.rotation.z = Math.PI / 2 - 0.6;
+    defense.position.set(0.62, 0.27, dz);
     groupe.add(defense);
   });
 
-  [[-0.16, -0.1], [-0.16, 0.1], [0.16, -0.1], [0.16, 0.1]].forEach(([dx, dz]) => {
-    const patte = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.28, 6), materiauCorps);
-    patte.position.set(dx, 0.14, dz);
+  // Pattes courtes et sombres (évoque les petits sabots de la référence).
+  [[-0.17, -0.12], [-0.17, 0.12], [0.17, -0.12], [0.17, 0.12]].forEach(([dx, dz]) => {
+    const patte = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.26, 6), materiauCorps);
+    patte.position.set(dx, 0.13, dz);
     patte.castShadow = true;
     groupe.add(patte);
+    const sabot = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.05, 6), materiauSombre);
+    sabot.position.set(dx, 0.02, dz);
+    groupe.add(sabot);
   });
 
-  const criniere = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x241c14 }));
-  criniere.position.set(0, 0.56, 0);
-  criniere.rotation.x = Math.PI / 2;
-  groupe.add(criniere);
+  // Crinière sombre en crête sur le dos.
+  for (let i = 0; i < 3; i++) {
+    const criniere = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.16, 6), materiauSombre);
+    criniere.position.set(0.1 - i * 0.14, 0.58, 0);
+    groupe.add(criniere);
+  }
+
+  // Petite queue en tire-bouchon.
+  const queue = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.015, 6, 10, Math.PI * 1.4), materiauSombre);
+  queue.position.set(-0.4, 0.38, 0);
+  queue.rotation.y = Math.PI / 2;
+  groupe.add(queue);
 
   return groupe;
 }
@@ -3255,9 +3349,9 @@ function main() {
     MondeData.cultures.forEach((culture) => {
       const bouton = document.createElement("button");
       bouton.className = "choix-culture";
-      bouton.innerHTML = `${culture.icone} ${culture.nom}<br><small>${culture.dureeCroissanceJours} j · ${culture.prixVenteBase} pièces</small>`;
+      bouton.innerHTML = `${culture.icone} ${culture.nom}<br><small>${culture.dureeCroissanceMinutes} min · ${culture.prixVenteBase} pièces</small>`;
       bouton.addEventListener("click", () => {
-        cultures.planter(parcelleCiblee, culture.id, sceneManager.tempsJeuTotal);
+        cultures.planter(parcelleCiblee, culture.id, sceneManager.tempsReelEcoule);
         panneauPlantation.classList.remove("visible");
         afficherMessage(`Planté : ${culture.icone} ${culture.nom}`);
         effets.jouerPlanter();
@@ -3291,7 +3385,7 @@ function main() {
       const bouton = document.createElement("button");
       bouton.className = "graine-bouton";
       bouton.textContent = culture.icone;
-      bouton.title = `${culture.nom} (${culture.dureeCroissanceJours} j)`;
+      bouton.title = `${culture.nom} (${culture.dureeCroissanceMinutes} min)`;
       bouton.addEventListener("click", () => selectionnerGraine(culture.id, bouton));
       barreSemisGraines.appendChild(bouton);
     });
@@ -3329,7 +3423,7 @@ function main() {
 
     const parcelleEntree = terrain.parcelles.find((p) => p.meshTerre === intersections[0].object);
     if (parcelleEntree && !parcelleEntree.data.cultureActuelle) {
-      cultures.planter(parcelleEntree, graineSelectionnee, sceneManager.tempsJeuTotal);
+      cultures.planter(parcelleEntree, graineSelectionnee, sceneManager.tempsReelEcoule);
       effets.jouerPlanter();
     }
   }
@@ -3644,10 +3738,10 @@ function main() {
   function boucleAnimation() {
     const dt = Math.min(sceneManager.horloge.getDelta(), 0.05);
 
-    personnage.update(dt);
+    personnage.update(dt, sceneManager.camera);
     sceneManager.mettreAJourCycleJourNuit(dt);
     foyers.forEach((f) => f.update(dt));
-    cultures.update(sceneManager.tempsJeuTotal);
+    cultures.update(sceneManager.tempsReelEcoule);
     population.update(dt);
     conflits.update(dt, sceneManager.scene);
     faune.update(dt, sceneManager.estNuit);

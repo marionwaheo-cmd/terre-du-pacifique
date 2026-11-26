@@ -122,6 +122,20 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   légalement toute l'année car elle endommage les cultures : aucune
   dramatisation, simple activité de subsistance.
 
+## 🔧 Améliorations récentes
+
+- **Déplacement relatif à la caméra** : avancer (W) déplace désormais le
+  personnage dans la direction où regarde la caméra, comme dans la plupart
+  des jeux à caméra orbitale (corrige la prise en main).
+- **Cultures accélérées** : la croissance se compte maintenant en minutes
+  réelles (1,5 à 7 min selon la culture) plutôt qu'en jours de jeu, pour
+  rester satisfaisante à jouer.
+- **Germes dispersés** : chaque parcelle plantée affiche 10 à 14 petits
+  plants répartis sur toute sa surface, plutôt qu'une seule plante au
+  centre.
+- **Sanglier redessiné** : silhouette plus ronde et stylisée (inspirée
+  d'un style "dessin", formes originales).
+
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
 
