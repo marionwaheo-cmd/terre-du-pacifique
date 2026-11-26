@@ -147,6 +147,10 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   (yeux, sourire) et coiffure (style + couleur libres). Chaque habitant
   varie ces traits individuellement pour représenter la diversité réelle
   du Pacifique, sans visage-type assigné à une communauté précise.
+- **Silhouettes distinctes par culture** : igname (tuteurs + feuilles
+  grimpantes), taro (grandes feuilles basses) et café (buisson + baies
+  rouges à maturité) ont chacun leur propre apparence, inspirée de photos
+  de référence. Les autres cultures gardent le visuel générique.
 
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.

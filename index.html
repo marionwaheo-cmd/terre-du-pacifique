@@ -2570,29 +2570,118 @@ class GestionCultures {
 
     const culture = MondeData.cultures.find((c) => c.id === p.data.cultureActuelle.id);
     const echelle = stade === STADE_POUSSE ? 0.35 : stade === STADE_CROISSANCE ? 0.7 : 1.0;
-    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x4a8a3a, roughness: 0.85 });
-    const materiauFruit = stade === STADE_MATURE
-      ? new THREE.MeshStandardMaterial({ color: culture.couleur, roughness: 0.6 })
-      : null;
+    const mature = stade === STADE_MATURE;
 
-    p._positionsPousses.forEach(({ x, z, decalage }) => {
-      // Petite touffe de 2 feuilles par plant (au lieu d'une seule grosse
-      // touffe centrale), hauteur proportionnelle au stade de croissance.
-      for (let i = 0; i < 2; i++) {
-        const angle = decalage + i * Math.PI;
-        const feuille = new THREE.Mesh(new THREE.ConeGeometry(0.06 * echelle, 0.28 * echelle, 6), materiauFeuille);
-        feuille.position.set(x + Math.cos(angle) * 0.06, 0.14 * echelle, z + Math.sin(angle) * 0.06);
-        feuille.castShadow = true;
-        p.groupePousse.add(feuille);
-      }
-      // À maturité : un petit fruit/tubercule par plant, repère visuel clair.
-      if (materiauFruit) {
-        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 7, 5), materiauFruit);
-        fruit.position.set(x, 0.1, z);
-        fruit.castShadow = true;
-        p.groupePousse.add(fruit);
-      }
+    // Silhouette dédiée pour certaines cultures (inspirées de photos de
+    // référence, formes originales) ; les autres gardent le visuel
+    // générique (touffe de feuilles + fruit), pour limiter l'ampleur du
+    // chantier tout en traitant les cas demandés en priorité.
+    const constructeurs = {
+      igname: this._construirePousseIgname,
+      taro: this._construirePousseTaro,
+      cafe: this._construirePousseCafe,
+    };
+    const construire = (constructeurs[culture.id] || this._construirePousseGenerique).bind(this);
+
+    p._positionsPousses.forEach((pousse) => {
+      construire(p.groupePousse, pousse, echelle, mature, culture);
     });
+  }
+
+  // --- Silhouette générique (tomate, pastèque, manioc...) -----------------
+  _construirePousseGenerique(groupeDest, { x, z, decalage }, echelle, mature, culture) {
+    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x4a8a3a, roughness: 0.85 });
+    for (let i = 0; i < 2; i++) {
+      const angle = decalage + i * Math.PI;
+      const feuille = new THREE.Mesh(new THREE.ConeGeometry(0.06 * echelle, 0.28 * echelle, 6), materiauFeuille);
+      feuille.position.set(x + Math.cos(angle) * 0.06, 0.14 * echelle, z + Math.sin(angle) * 0.06);
+      feuille.castShadow = true;
+      groupeDest.add(feuille);
+    }
+    if (mature) {
+      const materiauFruit = new THREE.MeshStandardMaterial({ color: culture.couleur, roughness: 0.6 });
+      const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 7, 5), materiauFruit);
+      fruit.position.set(x, 0.1, z);
+      fruit.castShadow = true;
+      groupeDest.add(fruit);
+    }
+  }
+
+  // --- Igname : tuteur (tige) + liane grimpante à feuilles en cœur --------
+  // (inspiré d'une photo de rangées d'ignames sur tuteurs — formes
+  // originales, jamais une image reproduite).
+  _construirePousseIgname(groupeDest, { x, z, decalage }, echelle, mature) {
+    const materiauTuteur = new THREE.MeshStandardMaterial({ color: 0x8a7050, roughness: 0.9 });
+    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x3f8a3f, roughness: 0.85 });
+    const hauteurTuteur = 0.55 * echelle + 0.05;
+
+    const tuteur = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, hauteurTuteur, 5), materiauTuteur);
+    tuteur.position.set(x, hauteurTuteur / 2, z);
+    tuteur.castShadow = true;
+    groupeDest.add(tuteur);
+
+    // Petites feuilles en cœur qui grimpent le long du tuteur.
+    const nbFeuilles = mature ? 6 : 3;
+    for (let i = 0; i < nbFeuilles; i++) {
+      const t = (i + 1) / (nbFeuilles + 1);
+      const angle = decalage + i * 2.4;
+      const feuille = new THREE.Mesh(new THREE.ConeGeometry(0.045 * echelle, 0.02, 4), materiauFeuille);
+      feuille.scale.set(1.6, 1, 1);
+      feuille.position.set(
+        x + Math.cos(angle) * 0.05 * echelle,
+        hauteurTuteur * t,
+        z + Math.sin(angle) * 0.05 * echelle
+      );
+      feuille.rotation.x = Math.PI / 2;
+      feuille.rotation.z = angle;
+      groupeDest.add(feuille);
+    }
+  }
+
+  // --- Taro : grandes feuilles en cœur, basses et larges ------------------
+  // (inspiré de photos de rangées de taro — feuilles larges caractéristiques).
+  _construirePousseTaro(groupeDest, { x, z, decalage }, echelle, mature) {
+    const materiauFeuille = new THREE.MeshStandardMaterial({ color: 0x2f7a42, roughness: 0.8, side: THREE.DoubleSide });
+    const nbFeuilles = 3;
+    for (let i = 0; i < nbFeuilles; i++) {
+      const angle = decalage + (i / nbFeuilles) * Math.PI * 2;
+      const tige = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.22 * echelle, 5), materiauFeuille);
+      tige.position.set(x + Math.cos(angle) * 0.06, 0.11 * echelle, z + Math.sin(angle) * 0.06);
+      groupeDest.add(tige);
+
+      // Grande feuille large en cœur (sphère très aplatie et étirée).
+      const feuille = new THREE.Mesh(new THREE.SphereGeometry(0.16 * echelle, 8, 6), materiauFeuille);
+      feuille.scale.set(1, 0.12, 1.4);
+      feuille.position.set(x + Math.cos(angle) * 0.1, 0.22 * echelle, z + Math.sin(angle) * 0.1);
+      feuille.rotation.y = angle;
+      feuille.rotation.x = mature ? -0.1 : -0.3; // s'ouvre en grandissant
+      feuille.castShadow = true;
+      groupeDest.add(feuille);
+    }
+  }
+
+  // --- Café : buisson touffu avec grappes de baies rouges à maturité ------
+  // (inspiré d'une photo de caféiers en rangées — baies rouge/orangé).
+  _construirePousseCafe(groupeDest, { x, z, decalage }, echelle, mature) {
+    const materiauFeuillage = new THREE.MeshStandardMaterial({ color: 0x1f5c33, roughness: 0.85 });
+    const buisson = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13 * echelle, 0), materiauFeuillage);
+    buisson.position.set(x, 0.14 * echelle, z);
+    buisson.castShadow = true;
+    groupeDest.add(buisson);
+
+    if (mature) {
+      const materiauBaie = new THREE.MeshStandardMaterial({ color: 0xc23b2b, roughness: 0.5 });
+      for (let i = 0; i < 5; i++) {
+        const angle = decalage + i * 1.3;
+        const baie = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 5), materiauBaie);
+        baie.position.set(
+          x + Math.cos(angle) * 0.11,
+          0.14 * echelle + Math.sin(i) * 0.04,
+          z + Math.sin(angle) * 0.11
+        );
+        groupeDest.add(baie);
+      }
+    }
   }
 
   // --- Actions déclenchées par le système d'interaction (touche E) -------
