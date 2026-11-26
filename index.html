@@ -120,8 +120,13 @@ traduite en géométries/matériaux Three.js originaux.
   - PERSONNALISATION (`Personnage.definirTenue`, touche I) : panneau
     permettant de choisir une tenue parmi plusieurs couleurs/motifs
     (inspirés de tissus imprimés, jamais copiés), pour un personnage
-    féminin ou masculin, ainsi qu'une teinte de peau. Aucun visage détaillé
-    n'est représenté : silhouettes génériques uniquement.
+    féminin ou masculin, ainsi qu'une teinte de peau.
+  - MISE À JOUR : tête agrandie (silhouette plus ronde et avenante), avec
+    un visage simple (yeux, sourire) et une coiffure (style + couleur) —
+    chaque habitant varie librement ces traits pour représenter la
+    diversité réelle du Pacifique (Kanak, Wallisien, Futunien, Tahitien,
+    asiatique...), SANS visage-type assigné à un groupe : aucun trait
+    n'est "codé" à une communauté précise, voir `construireSilhouetteHumaine`.
 
 ----------------------------------------------------------------------------
  MODULE 3 — CULTURES & ÉCONOMIE
@@ -1882,7 +1887,17 @@ class TerrainBuilder {
    matériau unique, modifiable sans tout reconstruire.
    ========================================================================== */
 
-function construireSilhouetteHumaine({ genre, couleurHaut, couleurBas, couleurMotif, couleurPeau, detaille = true }) {
+// Palette de cheveux générique (aucune couleur n'est réservée à un groupe) :
+// chaque habitant tire librement un style et une couleur, pour une
+// diversité individuelle plutôt qu'un "visage-type" assigné par communauté.
+const STYLES_CHEVEUX = ["court", "volumineux", "chignon", "boucles"];
+const COULEURS_CHEVEUX = [0x1b1410, 0x2a1d12, 0x3a2a1a, 0x171414, 0x4a3524];
+
+function construireSilhouetteHumaine({
+  genre, couleurHaut, couleurBas, couleurMotif, couleurPeau, detaille = true,
+  styleCheveux = STYLES_CHEVEUX[Math.floor(Math.random() * STYLES_CHEVEUX.length)],
+  couleurCheveux = COULEURS_CHEVEUX[Math.floor(Math.random() * COULEURS_CHEVEUX.length)],
+}) {
   const groupe = new THREE.Group();
 
   const materiauPeau = new THREE.MeshStandardMaterial({ color: couleurPeau, roughness: 0.7 });
@@ -1938,9 +1953,55 @@ function construireSilhouetteHumaine({ genre, couleurHaut, couleurBas, couleurMo
   cou.position.y = 1.56;
   groupe.add(cou);
 
-  const tete = ombres(new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), materiauPeau));
-  tete.position.y = 1.78;
+  // Tête volontairement plus grosse (silhouette plus ronde et avenante),
+  // avec un visage simple (yeux + sourire) — jamais de trait détaillé ou
+  // "codé" à une communauté précise : seules la teinte de peau et la
+  // coiffure varient librement d'un habitant à l'autre.
+  const rayonTete = 0.24;
+  const tete = ombres(new THREE.Mesh(new THREE.SphereGeometry(rayonTete, 14, 12), materiauPeau));
+  tete.position.y = 1.86;
   groupe.add(tete);
+
+  const materiauVisage = new THREE.MeshBasicMaterial({ color: 0x241a14 });
+  [-0.08, 0.08].forEach((dx) => {
+    const oeil = new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), materiauVisage);
+    oeil.position.set(dx, 1.885, rayonTete - 0.015);
+    groupe.add(oeil);
+  });
+  const sourire = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.008, 6, 8, Math.PI * 0.7), materiauVisage);
+  sourire.position.set(0, 1.8, rayonTete - 0.02);
+  sourire.rotation.z = Math.PI;
+  groupe.add(sourire);
+
+  // Coiffure (style + couleur libres, voir `STYLES_CHEVEUX`).
+  const materiauCheveux = new THREE.MeshStandardMaterial({ color: couleurCheveux, roughness: 0.85 });
+  if (styleCheveux === "volumineux") {
+    const masse = ombres(new THREE.Mesh(new THREE.SphereGeometry(rayonTete * 1.22, 12, 10), materiauCheveux));
+    masse.position.set(0, 1.9, -0.015);
+    groupe.add(masse);
+  } else if (styleCheveux === "boucles") {
+    for (let i = 0; i < 7; i++) {
+      const angle = (i / 7) * Math.PI * 2;
+      const boucle = ombres(new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), materiauCheveux));
+      boucle.position.set(Math.cos(angle) * rayonTete * 0.85, 1.95 + Math.sin(angle * 2) * 0.03, Math.sin(angle) * rayonTete * 0.85 - 0.04);
+      groupe.add(boucle);
+    }
+  } else if (styleCheveux === "chignon") {
+    const calotte = ombres(new THREE.Mesh(
+      new THREE.SphereGeometry(rayonTete * 1.04, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), materiauCheveux
+    ));
+    calotte.position.y = 1.9;
+    groupe.add(calotte);
+    const chignon = ombres(new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 6), materiauCheveux));
+    chignon.position.set(0, 2.0, -0.2);
+    groupe.add(chignon);
+  } else { // "court"
+    const calotte = ombres(new THREE.Mesh(
+      new THREE.SphereGeometry(rayonTete * 1.04, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), materiauCheveux
+    ));
+    calotte.position.y = 1.9;
+    groupe.add(calotte);
+  }
 
   // --- Bras (manche courte + avant-bras + main) ---------------------------
   [-1, 1].forEach((cote) => {
@@ -1974,7 +2035,7 @@ function construireSilhouetteHumaine({ genre, couleurHaut, couleurBas, couleurMo
     groupe.add(pendentif);
   }
 
-  return { groupe, materiauPeau, materiauHaut, materiauBas, materiauMotif };
+  return { groupe, materiauPeau, materiauHaut, materiauBas, materiauMotif, styleCheveux, couleurCheveux };
 }
 
 
@@ -2087,7 +2148,13 @@ class Personnage {
       couleurMotif: tenue.motif,
       couleurPeau: teintePeau,
       detaille: true,
+      // Fixés une fois pour toutes (sinon la coiffure du joueur changerait
+      // au hasard à chaque changement de tenue).
+      styleCheveux: this.styleCheveux,
+      couleurCheveux: this.couleurCheveux,
     });
+    this.styleCheveux = silhouette.styleCheveux;
+    this.couleurCheveux = silhouette.couleurCheveux;
     this.groupeSilhouette = silhouette.groupe;
     this.materiauPeau = silhouette.materiauPeau; // conservé pour `definirTeintePeau`
     this.groupe.add(this.groupeSilhouette);

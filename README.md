@@ -143,6 +143,10 @@ Le jeu est un fichier HTML unique et autonome, sans installation requise.
   centre.
 - **Sanglier redessiné** : silhouette plus ronde et stylisée (inspirée
   d'un style "dessin", formes originales).
+- **Personnages plus ronds et expressifs** : tête agrandie, visage simple
+  (yeux, sourire) et coiffure (style + couleur libres). Chaque habitant
+  varie ces traits individuellement pour représenter la diversité réelle
+  du Pacifique, sans visage-type assigné à une communauté précise.
 
 Voir l'en-tête du fichier [`index.html`](index.html) pour le détail de
 l'architecture et les points d'extension prévus.
